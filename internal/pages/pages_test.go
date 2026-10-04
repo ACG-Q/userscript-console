@@ -470,6 +470,42 @@ func TestRenderMarkdownEdgeCases(t *testing.T) {
 	}
 }
 
+func TestRenderCommandsBadArchive(t *testing.T) {
+	root := t.TempDir()
+	// renderCommands 在 Out 的父目录的 archive/ 下找 commands.json
+	archiveDir := filepath.Join(filepath.Dir(filepath.Clean(root)), "archive")
+	os.MkdirAll(archiveDir, 0o755)
+	os.WriteFile(filepath.Join(archiveDir, "commands.json"), []byte("not json"), 0o644)
+	opts := Options{Out: root, PagesBase: "https://test.github.io/repo"}
+	_, _, err := renderCommands(opts)
+	if err == nil {
+		t.Fatal("renderCommands 坏 JSON 应返回 error")
+	}
+}
+
+func TestBuildWithCommandsArchive(t *testing.T) {
+	reg := buildTestRegistry(t)
+	root := t.TempDir()
+	// 同逻辑：archive 在 Out 父目录
+	archiveDir := filepath.Join(filepath.Dir(filepath.Clean(root)), "archive")
+	os.MkdirAll(archiveDir, 0o755)
+	archiveJSON := `{"schema":1,"commands":[{"command":"add","author":"u","created_at":"2026-01-01T00:00:00Z","results":[{"id":"r1","author":"u","body":"/add url","created_at":"2026-01-01T00:00:00Z"}]}]}`
+	os.WriteFile(filepath.Join(archiveDir, "commands.json"), []byte(archiveJSON), 0o644)
+	opts := Options{
+		Out:             root,
+		Now:             time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC),
+		PagesBase:       "https://test.github.io/repo",
+		CommandsPerPage: 3,
+	}
+	out, err := Build(reg, opts, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.CommandPages) == 0 {
+		t.Error("有归档时应生成命令页")
+	}
+}
+
 func TestFilterActiveEmpty(t *testing.T) {
 	result := filterActive(nil)
 	if len(result) != 0 {
