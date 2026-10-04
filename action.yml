@@ -112,15 +112,19 @@ runs:
 
         # 始终解析已有输出（失败也要把 result 回传给调用方，便于失败回帖）
         if [ -s usm-out.json ]; then
+          # heredoc 分隔符必须开闭一致：只求值一次并复用
+          # （原写法在开关两处各跑一次 \`date +%s\`，跨秒即产生不同分隔符，
+          #   报 "Matching delimiter not found" 并使整个 step 失败）
+          EOF_ID="USM_EOF_$(date +%s%N)"
           {
             echo "changed=$(jq -r '.changed // false' usm-out.json)"
             echo "authorized=$(jq -r '.authorized // true' usm-out.json)"
-            echo "warnings<<USM_EOF_$(date +%s)"
+            echo "warnings<<$EOF_ID"
             jq -r '.warnings | if type == "array" then join("\n") elif type == "string" then . else empty end' usm-out.json
-            echo "USM_EOF"
-            echo "result<<USM_EOF_$(date +%s)"
+            echo "$EOF_ID"
+            echo "result<<$EOF_ID"
             jq -r '.result // empty' usm-out.json
-            echo "USM_EOF"
+            echo "$EOF_ID"
           } >> "$GITHUB_OUTPUT"
         fi
 
