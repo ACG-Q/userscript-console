@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/acg-q/userscript-console/internal/cli"
 	"github.com/acg-q/userscript-console/internal/commands"
@@ -57,7 +58,8 @@ func run(args []string) int {
 	}
 }
 
-// doctorRun 解析 `doctor [--check] [--json] [--root path]`（SPEC-CLI §5）。
+// ── doctor ──────────────────────────────────────────────────
+
 func doctorRun(args []string) int {
 	root, check, asJSON := ".", false, false
 	for i := 0; i < len(args); i++ {
@@ -81,7 +83,8 @@ func doctorRun(args []string) int {
 	return cli.RunDoctor(root, check, asJSON)
 }
 
-// runCommandRun 解析 `run-command --comment-body=... --comment-user=... --issue-number=... [--json] [--result-file=...]`。
+// ── run-command ─────────────────────────────────────────────
+
 func runCommandRun(args []string) int {
 	flags := parseRunCommandFlags(args)
 	if flags.CommentBody == "" {
@@ -100,7 +103,6 @@ func runCommandRun(args []string) int {
 		flags.RepoOwner = cli.EnvOr("GH_REPO_OWNER", "")
 	}
 
-	// 解析 issue number
 	issueNum, err := parseIssueNumber(flags.IssueNumber)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: --issue-number 必须是整数: %v\n", err)
@@ -117,7 +119,6 @@ func runCommandRun(args []string) int {
 		AuthorNamespace: cli.EnvOr("AUTHOR_NAMESPACE", ""),
 	}
 
-	// 执行命令解析
 	cmd, cmdArgs, codeBlocks, err := parseCommandComment(flags.CommentBody)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: 解析评论失败: %v\n", err)
@@ -130,7 +131,6 @@ func runCommandRun(args []string) int {
 		return 1
 	}
 
-	// 输出结果
 	if flags.JSON {
 		out := map[string]any{"authorized": true, "changed": res.Changed, "result": res.Text}
 		if err := writeJSON(os.Stdout, out); err != nil {
@@ -151,28 +151,69 @@ func runCommandRun(args []string) int {
 	return 0
 }
 
-// projectRun 解析 `project [--root path] [--dry-run]`。
+// ── project ─────────────────────────────────────────────────
+
 func projectRun(args []string) int {
-	// TODO: 实现投影逻辑
-	fmt.Fprintln(os.Stderr, "ERROR: project 子命令尚未完整实现")
-	return 1
+	root := parseRootFlag(args)
+	env := &commands.Env{
+		Root:      root,
+		RepoOwner: cli.EnvOr("GH_REPO_OWNER", ""),
+		PagesBase: cli.EnvOr("PAGES_BASE", ""),
+		Now:       time.Now(),
+	}
+	res, err := commands.Execute("project", env, "", nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return 1
+	}
+	fmt.Println(res.Text)
+	return 0
 }
 
-// buildRun 解析 `build [--out dist] [--pages-base url]`。
+// ── build ───────────────────────────────────────────────────
+
 func buildRun(args []string) int {
-	// TODO: 实现构建逻辑
-	fmt.Fprintln(os.Stderr, "ERROR: build 子命令尚未完整实现")
-	return 1
+	root := parseRootFlag(args)
+	pagesBase := cli.EnvOr("PAGES_BASE", "")
+	env := &commands.Env{
+		Root:      root,
+		PagesBase: pagesBase,
+		Now:       time.Now(),
+	}
+	res, err := commands.Execute("build", env, "", nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return 1
+	}
+	fmt.Println(res.Text)
+	return 0
 }
 
-// cleanupRun 解析 `cleanup [--keep N] [--apply] [--json]`。
+// ── cleanup ─────────────────────────────────────────────────
+
 func cleanupRun(args []string) int {
-	// TODO: 实现清理逻辑
-	fmt.Fprintln(os.Stderr, "ERROR: cleanup 子命令尚未完整实现")
-	return 1
+	root := parseRootFlag(args)
+	env := &commands.Env{
+		Root: root,
+		Now:  time.Now(),
+	}
+	// 检查 --apply 标志
+	apply := false
+	for _, a := range args {
+		if a == "--apply" {
+			apply = true
+		}
+	}
+	res, err := commands.Execute("cleanup", env, boolToString(apply), nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return 1
+	}
+	fmt.Println(res.Text)
+	return 0
 }
 
-// ── 辅助函数 ───────────────────────────────────────────────
+// ── 辅助函数 ────────────────────────────────────────────────
 
 func parseRunCommandFlags(args []string) cli.RunCommandFlags {
 	var f cli.RunCommandFlags
@@ -201,6 +242,18 @@ func parseRunCommandFlags(args []string) cli.RunCommandFlags {
 	return f
 }
 
+func parseRootFlag(args []string) string {
+	for i := 0; i < len(args); i++ {
+		if strings.HasPrefix(args[i], "--root=") {
+			return args[i][len("--root="):]
+		}
+		if args[i] == "--root" && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return cli.EnvOr("USM_ROOT", ".")
+}
+
 func parseIssueNumber(s string) (int, error) {
 	var n int
 	_, err := fmt.Sscanf(s, "%d", &n)
@@ -214,12 +267,10 @@ func parseIssueNumber(s string) (int, error) {
 }
 
 func parseCommandComment(body string) (cmd string, args string, codes []string, err error) {
-	// 简单解析：第一行是命令，后续是代码块
 	lines := strings.Split(strings.TrimSpace(body), "\n")
 	if len(lines) == 0 {
 		return "", "", nil, fmt.Errorf("评论体为空")
 	}
-	// 第一行应该是 /command args
 	first := strings.TrimSpace(lines[0])
 	if !strings.HasPrefix(first, "/") {
 		return "", "", nil, fmt.Errorf("评论必须以 / 开头")
@@ -229,11 +280,9 @@ func parseCommandComment(body string) (cmd string, args string, codes []string, 
 	if len(parts) > 1 {
 		args = parts[1]
 	}
-	// 提取代码块（```...```）
 	for i := 1; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
 		if strings.HasPrefix(line, "```") {
-			// 开始/结束代码块
 			content := strings.TrimPrefix(line, "```")
 			content = strings.TrimSuffix(content, "```")
 			codes = append(codes, content)
@@ -246,6 +295,17 @@ func writeJSON(w *os.File, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
 	return enc.Encode(v)
+}
+
+func now() time.Time {
+	return time.Now()
+}
+
+func boolToString(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
 
 func usage(w *os.File) {

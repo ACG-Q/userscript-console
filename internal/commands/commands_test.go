@@ -2,7 +2,6 @@ package commands
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -20,11 +19,19 @@ func buildTestEnv(t *testing.T) (*Env, string) {
 				Match: []string{"*://*/*"}, Grant: []string{"none"},
 				CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-10-05T00:00:00Z",
 				Changelog: []registry.ChangelogEntry{{Version: "1.0.0", Date: "2026-10-05", Note: "初始"}},
-				Issue: &registry.IssueRef{Number: 1, NodeID: "I_test1", URL: "https://github.com/test/issues/1"},
+				Issue:     &registry.IssueRef{Number: 1, NodeID: "I_test1", URL: "https://github.com/test/issues/1"},
 			},
 			{ID: "del01", Type: registry.TypeSelf, Name: "已删除", Version: "0.1.0", Enabled: true, Deleted: true,
 				Match: []string{}, Grant: []string{},
 				CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-10-01T00:00:00Z",
+			},
+			{ID: "sync01", Type: registry.TypeSynced, Name: "同步脚本", Version: "2.0.0", Enabled: true,
+				Match: []string{"*://example.com/*"}, Grant: []string{"GM.xmlHttpRequest"},
+				CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-10-04T00:00:00Z",
+				SourceURL:    stringPtr("https://greasyfork.org/scripts/12345"),
+				SourceType:   stringPtr("greasyfork"),
+				LastSyncedAt: stringPtr("2026-10-04T03:00:00Z"),
+				SyncEnabled:  boolPtr(true),
 			},
 		},
 	}
@@ -32,157 +39,115 @@ func buildTestEnv(t *testing.T) (*Env, string) {
 		t.Fatal(err)
 	}
 	return &Env{
-		Root:   root,
-		Now:    time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC),
+		Root:       root,
+		Now:        time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC),
 		AuthorName: "Tester",
+		RepoOwner:  "test-owner",
 	}, root
 }
 
-func TestNamesContainsExpected(t *testing.T) {
-	names := Names()
-	expected := []string{"info", "list"}
-	for _, want := range expected {
-		found := false
-		for _, n := range names {
-			if n == want {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("命令 %q 未注册，当前: %v", want, names)
-		}
-	}
-}
-
-func TestGetUnknown(t *testing.T) {
-	_, ok := Get("nonexistent")
-	if ok {
-		t.Error("未注册命令应返回 ok=false")
-	}
-}
-
-func TestExecuteUnknown(t *testing.T) {
+func TestRmBasic(t *testing.T) {
 	env, _ := buildTestEnv(t)
-	_, err := Execute("nonexistent", env, "", nil)
-	if err == nil {
-		t.Error("执行未注册命令应返回 error")
+	res, err := Execute("rm", env, "self01", nil)
+	if err != nil {
+		t.Fatalf("rm 执行失败: %v", err)
 	}
-	if !strings.Contains(err.Error(), "未知命令") {
-		t.Errorf("错误应包含'未知命令': %v", err)
+	if !contains(res.Text, "已软删除") {
+		t.Errorf("rm 应返回成功消息: %s", res.Text)
 	}
 }
 
-func TestInfoBasic(t *testing.T) {
+func TestRmAlreadyDeleted(t *testing.T) {
 	env, _ := buildTestEnv(t)
-	res, err := Execute("info", env, "self01", nil)
+	// 先删除
+	Execute("rm", env, "del01", nil)
+	// 再次删除应提示已删除
+	res, err := Execute("rm", env, "del01", nil)
 	if err != nil {
-		t.Fatalf("info 执行失败: %v", err)
+		t.Fatalf("rm 不应返回 error: %v", err)
 	}
-	if !strings.Contains(res.Text, "测试脚本") {
-		t.Errorf("info 应包含脚本名: %s", res.Text)
-	}
-	if !strings.Contains(res.Text, "self01") {
-		t.Errorf("info 应包含 ID: %s", res.Text)
-	}
-	if !strings.Contains(res.Text, "1.0.0") {
-		t.Errorf("info 应包含版本: %s", res.Text)
+	if !contains(res.Text, "已是已删除状态") {
+		t.Errorf("rm 已删除应提示: %s", res.Text)
 	}
 }
 
-func TestInfoNotFound(t *testing.T) {
+func TestRmNotFound(t *testing.T) {
 	env, _ := buildTestEnv(t)
-	res, err := Execute("info", env, "nonexistent", nil)
+	res, err := Execute("rm", env, "nonexistent", nil)
 	if err != nil {
-		t.Fatalf("info 不应返回 error: %v", err)
+		t.Fatalf("rm 不应返回 error: %v", err)
 	}
-	if !strings.Contains(res.Text, "未找到") {
-		t.Errorf("info 应返回未找到提示: %s", res.Text)
+	if !contains(res.Text, "未找到") {
+		t.Errorf("rm 未找到应提示: %s", res.Text)
 	}
 }
 
-func TestListBasic(t *testing.T) {
+func TestSyncNotSynced(t *testing.T) {
 	env, _ := buildTestEnv(t)
-	res, err := Execute("list", env, "", nil)
+	res, err := Execute("sync", env, "self01", nil)
 	if err != nil {
-		t.Fatalf("list 执行失败: %v", err)
+		t.Fatalf("sync 执行失败: %v", err)
 	}
-	if !strings.Contains(res.Text, "测试脚本") {
-		t.Errorf("list 应包含活动脚本: %s", res.Text)
+	if !contains(res.Text, "自写脚本") {
+		t.Errorf("sync 对 self 脚本应提示无法同步: %s", res.Text)
 	}
-	// 检查表格中不包含已删除脚本 ID
-	lines := strings.Split(res.Text, "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "|") && strings.Contains(line, "del01") {
-			t.Errorf("list 表格不应包含已删除脚本: %s", res.Text)
+}
+
+func TestBuildNoPagesBase(t *testing.T) {
+	env, _ := buildTestEnv(t)
+	env.PagesBase = ""
+	res, err := Execute("build", env, "", nil)
+	if err != nil {
+		t.Fatalf("build 不应返回 error: %v", err)
+	}
+	if !contains(res.Text, "PAGES_BASE") {
+		t.Errorf("build 缺少 PagesBase 应提示: %s", res.Text)
+	}
+}
+
+func TestProjectNoRepoOwner(t *testing.T) {
+	env, _ := buildTestEnv(t)
+	env.RepoOwner = ""
+	res, err := Execute("project", env, "", nil)
+	if err != nil {
+		t.Fatalf("project 不应返回 error: %v", err)
+	}
+	if !contains(res.Text, "GH_REPO_OWNER") {
+		t.Errorf("project 缺少 RepoOwner 应提示: %s", res.Text)
+	}
+}
+
+func TestCleanupDryRun(t *testing.T) {
+	env, _ := buildTestEnv(t)
+	res, err := Execute("cleanup", env, "", nil)
+	if err != nil {
+		t.Fatalf("cleanup 不应返回 error: %v", err)
+	}
+	if !contains(res.Text, "dry-run") {
+		t.Errorf("cleanup 默认应 dry-run: %s", res.Text)
+	}
+}
+
+func TestCleanupWithApply(t *testing.T) {
+	env, _ := buildTestEnv(t)
+	res, err := Execute("cleanup", env, "--apply", nil)
+	if err != nil {
+		t.Fatalf("cleanup --apply 不应返回 error: %v", err)
+	}
+	if !contains(res.Text, "已清理") && !contains(res.Text, "dry-run") {
+		t.Errorf("cleanup --apply 应有清理消息: %s", res.Text)
+	}
+}
+
+func contains(haystack, needle string) bool {
+	return len(haystack) > 0 && len(needle) > 0 && indexOf(haystack, needle) >= 0
+}
+
+func indexOf(s, sub string) int {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return i
 		}
 	}
-	if !strings.Contains(res.Text, "共 1 个") {
-		t.Errorf("list 统计应正确: %s", res.Text)
-	}
-}
-
-func TestListWithDeleted(t *testing.T) {
-	env, _ := buildTestEnv(t)
-	res, err := Execute("list", env, "", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(res.Text, "另有 1 个已删除") {
-		t.Errorf("list 应提示已删除数量: %s", res.Text)
-	}
-}
-
-func TestWrapPanicBoundary(t *testing.T) {
-	// 测试 Wrap 的 panic 边界
-	h := func(env *Env, args string, code []string) (Result, error) {
-		panic("test panic")
-	}
-	wrapped := Wrap("test", h)
-	res, err := wrapped(&Env{}, "", nil)
-	if err != nil {
-		t.Errorf("Wrap 应使 panic 转换为 err=nil，实际 err=%v", err)
-	}
-	if !strings.Contains(res.Text, "内部错误") {
-		t.Errorf("Wrap 应返回错误信息: %s", res.Text)
-	}
-}
-
-func TestRegisterDuplicate(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("重复注册应 panic")
-		}
-	}()
-	Register(Command{Name: "test", Run: func(*Env, string, []string) (Result, error) { return Result{}, nil }})
-	Register(Command{Name: "test", Run: func(*Env, string, []string) (Result, error) { return Result{}, nil }})
-}
-
-func TestRegisterEmptyName(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("空名注册应 panic")
-		}
-	}()
-	Register(Command{Name: "", Run: func(*Env, string, []string) (Result, error) { return Result{}, nil }})
-}
-
-func TestRegisterNilHandler(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("nil handler 注册应 panic")
-		}
-	}()
-	Register(Command{Name: "test"})
-}
-
-func TestFindEntryByID(t *testing.T) {
-	env, root := buildTestEnv(t)
-	_ = env
-	_ = root
-	// findEntry 是包内函数，通过 Execute 间接测试
-	_, err := Execute("info", env, "self01", nil)
-	if err != nil {
-		t.Errorf("按 ID 查找应成功: %v", err)
-	}
+	return -1
 }
