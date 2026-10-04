@@ -245,6 +245,23 @@ func Test非法输入返回错误不Panic(t *testing.T) {
 		t.Error("未知类型移除应报错")
 	}
 
+	// resolve 反斜杠拒绝
+	if _, err := resolve(root, "bad\\path"); err == nil {
+		t.Error("resolve 反斜杠路径应报错")
+	}
+	// resolve 空段拒绝
+	if _, err := resolve(root, "a//b"); err == nil {
+		t.Error("resolve 空段路径应报错")
+	}
+	// resolve 成功路径
+	got, err := resolve(root, "scripts/self/demo/index.js")
+	if err != nil {
+		t.Fatalf("resolve 成功路径应无 error: %v", err)
+	}
+	if !strings.HasSuffix(got, "scripts\\self\\demo\\index.js") && !strings.HasSuffix(got, "scripts/self/demo/index.js") {
+		t.Errorf("resolve 路径不符: %s", got)
+	}
+
 	// 路径逃逸：id 含 .. 段
 	if err := WriteSource(root, "..", registry.TypeSelf, "c"); err == nil {
 		t.Error("id 越界应报错")

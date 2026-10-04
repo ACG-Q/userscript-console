@@ -513,6 +513,13 @@ func TestFilterActiveEmpty(t *testing.T) {
 	}
 }
 
+func TestRenderTemplateNotExist(t *testing.T) {
+	_, err := renderTemplate("nonexistent_template_xyz", nil)
+	if err == nil {
+		t.Fatal("renderTemplate 不存在的模板应返回 error")
+	}
+}
+
 func TestRenderMarkdownErrorPath(t *testing.T) {
 	// RenderMarkdown 内部用 goldmark；输入为纯字符串时不会触发错误。
 	// 这里验证的是正常渲染路径输出包含内容。
