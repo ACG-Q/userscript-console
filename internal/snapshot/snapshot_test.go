@@ -90,3 +90,25 @@ func TestRunUsage(t *testing.T) {
 		t.Errorf("缺参应 exit 2, got %d", code)
 	}
 }
+
+func TestIgnoredFiles不参与孤儿判定(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{"a.txt": "a"}
+	if _, err := Update(dir, files); err != nil {
+		t.Fatal(err)
+	}
+	// README.md 允许存在且不报孤儿、不被清理
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# 说明"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if diffs := Check(dir, files); len(diffs) != 0 {
+		t.Errorf("README 不应算孤儿: %v", diffs)
+	}
+	changed, err := Update(dir, files)
+	if err != nil || len(changed) != 0 {
+		t.Errorf("README 不应被清理: %v %v", changed, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "README.md")); err != nil {
+		t.Error("README 被误删")
+	}
+}

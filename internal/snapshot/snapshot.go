@@ -86,11 +86,19 @@ func Check(dir string, files map[string]string) []string {
 		}
 	}
 	for _, rel := range sortedKeys(onDisk) {
+		if ignoredRel(rel) {
+			continue
+		}
 		if _, ok := files[rel]; !ok {
 			diffs = append(diffs, fmt.Sprintf("孤儿: %s（基线存在但生成结果没有）", rel))
 		}
 	}
 	return diffs
+}
+
+// ignoredRel 基线目录内允许存在的说明性文件（不参与孤儿判定与清理）。
+func ignoredRel(rel string) bool {
+	return rel == "README.md"
 }
 
 // Update 把生成结果写回目录（原子写），返回内容有变化的文件列表。
@@ -111,8 +119,11 @@ func Update(dir string, files map[string]string) ([]string, error) {
 		}
 		changed = append(changed, rel)
 	}
-	// 清理孤儿基线
+	// 清理孤儿基线（README.md 等说明文件不清理）
 	for _, rel := range sortedKeys(onDisk) {
+		if ignoredRel(rel) {
+			continue
+		}
 		if _, ok := files[rel]; !ok {
 			path := filepath.Join(dir, filepath.FromSlash(rel))
 			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {

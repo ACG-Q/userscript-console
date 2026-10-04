@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "scripts": [
+    {
+      "id": "11111111-2222-4333-8444-555555555555",
+      "type": "self",
+      "name": "示例自写脚本",
+      "version": "1.2.0",
+      "description": "含 <b>HTML</b> 与 \"引号\" 的描述",
+      "author": "ACG-Q",
+      "namespace": "https://your-namespace.com",
+      "match": [
+        "*://*/*",
+        "https://example.com/*"
+      ],
+      "grant": [
+        "none"
+      ],
+      "enabled": true,
+      "created_at": "2026-10-02T00:00:00Z",
+      "updated_at": "2026-10-05T00:00:00Z",
+      "documentation": "# 使用说明\n\n含 | 竖线 的表格内容",
+      "changelog": [
+        {
+          "version": "1.2.0",
+          "date": "2026-10-05",
+          "note": "修复|管道转义 与 换行"
+        },
+        {
+          "version": "1.1.0",
+          "date": "2026-10-03",
+          "note": "新增功能"
+        }
+      ],
+      "discussions": [
+        {
+          "version": "1.2.0",
+          "number": 12,
+          "node_id": "D_kwDOExample1",
+          "url": "https://github.com/acg-q/userscript-manager/discussions/12",
+          "created_at": "2026-10-05"
+        }
+      ],
+      "deleted": false,
+      "issue": {
+        "number": 5,
+        "node_id": "I_kwDOExample1",
+        "url": "https://github.com/acg-q/userscript-manager/issues/5"
+      }
+    },
+    {
+      "id": "abcdef012345",
+      "type": "synced",
+      "name": "示例同步脚本",
+      "version": "2.0.0",
+      "description": "来自 GreasyFork 的同步脚本",
+      "author": "upstream",
+      "namespace": "",
+      "match": [
+        "*://*/*"
+      ],
+      "grant": [
+        "none"
+      ],
+      "enabled": false,
+      "created_at": "2026-10-01T00:00:00Z",
+      "updated_at": "2026-10-04T00:00:00Z",
+      "documentation": "",
+      "changelog": [],
+      "discussions": [],
+      "deleted": false,
+      "source_url": "https://greasyfork.org/scripts/12345",
+      "source_type": "greasyfork",
+      "last_synced_at": "2026-10-04T03:00:00Z",
+      "sync_enabled": true
+    },
+    {
+      "id": "99999999-8888-4777-8666-555555555555",
+      "type": "self",
+      "name": "已下架脚本",
+      "version": "0.3.1",
+      "description": "已被 /rm 软删除",
+      "author": "ACG-Q",
+      "namespace": "https://your-namespace.com",
+      "match": [
+        "*://*/*"
+      ],
+      "grant": [
+        "none"
+      ],
+      "enabled": true,
+      "created_at": "2026-09-01T00:00:00Z",
+      "updated_at": "2026-10-06T00:00:00Z",
+      "documentation": "",
+      "changelog": [
+        {
+          "version": "0.3.1",
+          "date": "2026-10-06",
+          "note": "下架前最后记录"
+        }
+      ],
+      "discussions": [],
+      "deleted": true,
+      "issue": {
+        "number": 7,
+        "node_id": "I_kwDOExample2",
+        "url": "https://github.com/acg-q/userscript-manager/issues/7"
+      }
+    }
+  ]
+}
