@@ -746,3 +746,54 @@ func TestDiscussionCommentsEndCursorEmpty(t *testing.T) {
 		t.Fatal("DiscussionComments endCursor 空应报错")
 	}
 }
+
+func TestListIssueCommentsNullIssue(t *testing.T) {
+	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{
+		"repository": map[string]any{"issue": nil},
+	}), nil}}}
+	c := newTestClient(t, d)
+	if _, err := c.ListIssueComments(context.Background(), 5, 100); err == nil {
+		t.Fatal("ListIssueComments null issue 应报错")
+	}
+}
+
+func TestTransitionWrongState(t *testing.T) {
+	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{
+		"closeIssue": map[string]any{"issue": map[string]any{"id": "I_1", "number": 1, "state": "OPEN"}},
+	}), nil}}}
+	c := newTestClient(t, d)
+	if err := c.CloseIssue(context.Background(), "I_1"); err == nil {
+		t.Fatal("CloseIssue 状态不符应报错")
+	}
+}
+
+func TestCreateLabelNetworkError(t *testing.T) {
+	d := &fakeDoer{t: t, resps: []resp{
+		{200, okBody(t, map[string]any{"repository": map[string]any{"id": "R_1"}}), nil},
+		{200, errBody("GraphQL error"), nil},
+	}}
+	c := newTestClient(t, d)
+	if err := c.CreateLabel(context.Background(), "bug", "ff0000", "缺陷"); err == nil {
+		t.Fatal("CreateLabel GraphQL 错误应返回 error")
+	}
+}
+
+func TestDeleteCommentSuccess(t *testing.T) {
+	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{
+		"deleteComment": map[string]any{"clientMutationId": "x"},
+	}), nil}}}
+	c := newTestClient(t, d)
+	if err := c.DeleteComment(context.Background(), "IC_1"); err != nil {
+		t.Fatalf("DeleteComment 应成功: %v", err)
+	}
+}
+
+func TestDiscussionCategoriesEmpty(t *testing.T) {
+	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{
+		"repository": map[string]any{"discussionCategories": map[string]any{"nodes": []any{}}},
+	}), nil}}}
+	c := newTestClient(t, d)
+	if _, err := c.DiscussionCategories(context.Background()); err == nil {
+		t.Fatal("DiscussionCategories 空分类应报错")
+	}
+}

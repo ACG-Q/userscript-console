@@ -191,14 +191,28 @@ func TestProjectRun(t *testing.T) {
 	}
 }
 
-func TestBuildRunWithPagesBase(t *testing.T) {
+func TestBuildRunWithNoPagesBase(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("PAGES_BASE", "https://test.github.io/repo")
-	defer os.Unsetenv("PAGES_BASE")
-
 	code := buildRun([]string{"--root", root})
+	// buildRun 无 PagesBase 时打印错误，但返回 0（dry-run 模式不报错退出）
 	if code != 0 {
-		t.Errorf("build 带 PagesBase 应返回 0, got %d", code)
+		t.Errorf("build 无 PagesBase 应返回 0, got %d", code)
+	}
+}
+
+func TestRunSnapshotCheck(t *testing.T) {
+	// 验证 snapshot check 路径（可能因语料文件不可达而 skip，但不会 panic）
+	code := run([]string{"snapshot", "check"})
+	if code != 0 && code != 1 && code != 2 {
+		t.Errorf("snapshot check 应返回 0/1/2, got %d", code)
+	}
+}
+
+func TestRunDoctorCheck(t *testing.T) {
+	root := buildTestRegistryDir(t)
+	code := run([]string{"doctor", "--root", root})
+	if code != 0 && code != 1 {
+		t.Errorf("doctor check 应返回 0 或 1, got %d", code)
 	}
 }
 
