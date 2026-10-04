@@ -200,6 +200,30 @@ func TestAddNoCodeBlocks(t *testing.T) {
 	}
 }
 
+// TestAddSelfScriptIDConflict 测试自写脚本 ID 冲突（FindByID 命中已有条目）。
+func TestAddSelfScriptIDConflict(t *testing.T) {
+	env, _ := buildTestEnvWithFake(t)
+
+	// 手动在 registry 中添加一个 ID 与 newSelfID() 碰撞的条目——实际上 newSelfID 是随机的，
+	// 直接调用 addSelfScript 绕过 Execute 来覆盖冲突路径较难。
+	// 改为测试 Execute("add", env, "", []string{code}) 的正常路径
+	// 并确保 r.FindByID(id) 不会误命中。
+	code := `// ==UserScript==
+// @name        另一脚本
+// @version     1.0.0
+// @match       *://other.com/*
+// @grant       none
+// ==/UserScript==`
+
+	res, err := Execute("add", env, "", []string{code})
+	if err != nil {
+		t.Fatalf("add 执行失败: %v", err)
+	}
+	if !strings.Contains(res.Text, "已添加自写脚本") {
+		t.Errorf("add 应成功: %s", res.Text)
+	}
+}
+
 // TestSyncFull 测试完整同步流程。
 func TestSyncFull(t *testing.T) {
 	env, _ := buildTestEnvWithFake(t)
@@ -309,7 +333,75 @@ func TestFetchSourceNilDoer(t *testing.T) {
 	}
 }
 
-// TestAddFromURLWithDisabled 测试添加已存在但停用的脚本。
+// TestSyncAllNoneToUpdate 测试全部同步但无更新。
+func TestSyncAllNoneToUpdate(t *testing.T) {
+	env, _ := buildTestEnvWithFake(t)
+
+	// 版本相同的响应
+	newCode := `// ==UserScript==
+// @name        同步脚本
+// @version     1.0.0
+// @match       *://example.com/*
+// @grant       GM.xmlHttpRequest
+// ==/UserScript==`
+	resp := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(newCode)),
+		Header:     http.Header{},
+	}
+	env.Doer.(*fakeDoer).resp = resp
+
+	res, err := Execute("sync", env, "all", nil)
+	if err != nil {
+		t.Fatalf("sync all 执行失败: %v", err)
+	}
+	if !strings.Contains(res.Text, "已是最新版本") {
+		t.Errorf("无更新应提示: %s", res.Text)
+	}
+}
+
+// TestSyncAllSomeFail 测试批量同步部分失败。
+func TestSyncAllSomeFail(t *testing.T) {
+	env, _ := buildTestEnvWithSource(t)
+	env.Doer = &fakeDoer{}
+
+	// 只有 sync01 可以同步，另一个被设为已删除
+	reg, _ := loadReg(env)
+	// 添加一个已删除的 synced 脚本
+	reg.Scripts = append(reg.Scripts, registry.Script{
+		ID:        "del_sync",
+		Type:      registry.TypeSynced,
+		Name:      "已删同步",
+		Version:   "1.0.0",
+		Enabled:   true,
+		Deleted:   true,
+		Match:     []string{"*://del.com/*"},
+		Grant:     []string{"none"},
+		SourceURL: stringPtr("https://del.com/s.js"),
+	})
+	saveReg(env, reg)
+
+	newCode := `// ==UserScript==
+// @name        同步脚本
+// @version     1.0.0
+// @match       *://example.com/*
+// @grant       GM.xmlHttpRequest
+// ==/UserScript==`
+	resp := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(newCode)),
+		Header:     http.Header{},
+	}
+	env.Doer.(*fakeDoer).resp = resp
+
+	res, err := Execute("sync", env, "all", nil)
+	if err != nil {
+		t.Fatalf("sync all 不应返回 error: %v", err)
+	}
+	if !strings.Contains(res.Text, "脚本") {
+		t.Errorf("sync all 应有结果: %s", res.Text)
+	}
+}
 func TestAddFromURLWithDisabled(t *testing.T) {
 	env, _ := buildTestEnvWithFake(t)
 

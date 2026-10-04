@@ -637,3 +637,55 @@ func TestIssueStats解码与跳过null(t *testing.T) {
 		t.Errorf("空输入应 nil, %v %v", empty, err)
 	}
 }
+
+// ── WithEndpoint ──────────────────────────────────────────────
+
+func TestWithEndpoint(t *testing.T) {
+	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{
+		"repository": map[string]any{"id": "R_1"},
+	}), nil}}}
+	c := newTestClient(t, d, WithEndpoint("https://custom.github.example.com/graphql"))
+	var out map[string]any
+	if err := c.Raw(context.Background(), REPO_QUERY, map[string]any{"number": 1}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(d.recs[0].Query, "repository") {
+		t.Errorf("query 应含 repository: %q", d.recs[0].Query)
+	}
+}
+
+// ── UpdateIssue ───────────────────────────────────────────────
+
+func TestUpdateIssue(t *testing.T) {
+	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{
+		"updateIssue": map[string]any{"issue": gqlIssueJSON("I_1", 1)},
+	}), nil}}}
+	c := newTestClient(t, d)
+	if err := c.UpdateIssue(context.Background(), "I_1", "新标题", "新正文"); err != nil {
+		t.Fatalf("UpdateIssue 失败: %v", err)
+	}
+	if d.recs[0].Vars["issueId"] != "I_1" {
+		t.Errorf("variables: %#v", d.recs[0].Vars)
+	}
+	if d.recs[0].Vars["title"] != "新标题" {
+		t.Errorf("title variable = %v, want 新标题", d.recs[0].Vars["title"])
+	}
+}
+
+func TestUpdateIssueNullReturn(t *testing.T) {
+	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{
+		"updateIssue": map[string]any{"issue": nil},
+	}), nil}}}
+	c := newTestClient(t, d)
+	if err := c.UpdateIssue(context.Background(), "I_1", "t", "b"); err == nil {
+		t.Fatal("UpdateIssue null 返回应报错")
+	}
+}
+
+func TestUpdateIssueRawError(t *testing.T) {
+	d := &fakeDoer{t: t, resps: []resp{{200, errBody("Something went wrong"), nil}}}
+	c := newTestClient(t, d)
+	if err := c.UpdateIssue(context.Background(), "I_1", "t", "b"); err == nil {
+		t.Fatal("UpdateIssue GraphQL error 应返回 error")
+	}
+}

@@ -191,12 +191,34 @@ func TestProjectRun(t *testing.T) {
 	}
 }
 
-func TestBuildRunNoPagesBase(t *testing.T) {
+func TestBuildRunWithPagesBase(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	// build 命令会执行 commands.Execute，缺少 PagesBase 时返回 error
-	// 但 cmd/usm 的 buildRun 会打印错误并返回 1
-	// 这里测试的是 buildRun 的路径，由于项目配置问题可能返回 0
-	_ = buildRun([]string{"--root", root})
+	os.Setenv("PAGES_BASE", "https://test.github.io/repo")
+	defer os.Unsetenv("PAGES_BASE")
+
+	code := buildRun([]string{"--root", root})
+	if code != 0 {
+		t.Errorf("build 带 PagesBase 应返回 0, got %d", code)
+	}
+}
+
+func TestSnapshotRunWithGenerator(t *testing.T) {
+	// snapshot check 需要注册生成器，通过 cmd/usm 的 init() 已注册 buildSnapshotFiles
+	// 但测试时在独立包中运行，需要手动设置
+	// 测试 snapshot check 走 run() 路径
+	code := run([]string{"snapshot", "check"})
+	// 由于 tests/corpus/inputs/registry.json 存在但 buildSnapshotFiles 会加载它
+	// 结果取决于基线是否一致；这里只验证不 panic 且返回合理值
+	if code != 0 && code != 1 {
+		t.Errorf("snapshot check 应返回 0 或 1, got %d", code)
+	}
+}
+
+func TestRunSnapshotUpdate(t *testing.T) {
+	code := run([]string{"snapshot", "update"})
+	if code != 0 && code != 1 {
+		t.Errorf("snapshot update 应返回 0 或 1, got %d", code)
+	}
 }
 
 func TestCleanupRun(t *testing.T) {

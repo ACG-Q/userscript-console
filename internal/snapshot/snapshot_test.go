@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -169,5 +170,65 @@ func TestRunCheckPath(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "test.txt"), []byte("modified\n"), 0o644)
 	if code := Run(dir, []string{"check"}); code != 1 {
 		t.Errorf("check 不一致应 exit 1, got %d", code)
+	}
+}
+
+func TestRunGeneratorError(t *testing.T) {
+	dir := t.TempDir()
+	defaultGen = nil
+	RegisterDefault(func() (map[string]string, error) {
+		return nil, fmt.Errorf("gen 失败")
+	})
+	defer func() { defaultGen = nil }()
+	if code := Run(dir, []string{"check"}); code != 1 {
+		t.Errorf("生成器报错应 exit 1, got %d", code)
+	}
+}
+
+func TestAtomicWriteError(t *testing.T) {
+	// 写入一个不存在的目录 → atomicWrite 应失败
+	dir := filepath.Join(t.TempDir(), "nonexistent", "nested")
+	path := filepath.Join(dir, "out.txt")
+	if err := atomicWrite(path, []byte("data")); err == nil {
+		t.Fatal("atomicWrite 到不存在目录应返回 error")
+	}
+}
+
+func TestReadTreeNonExistent(t *testing.T) {
+	// 目录不存在 → readTree 应返回空 map，不 panic
+	out := readTree(filepath.Join(t.TempDir(), "nope"))
+	if len(out) != 0 {
+		t.Errorf("readTree 不存在目录应返回空 map, got %v", out)
+	}
+}
+
+func TestNormalize(t *testing.T) {
+	if got := normalize("hello\r\nworld\r\n"); got != "hello\nworld" {
+		t.Errorf("normalize CRLF = %q, want hello\\nworld", got)
+	}
+	if got := normalize("trailing\n\n"); got != "trailing" {
+		t.Errorf("normalize trailing = %q, want trailing", got)
+	}
+	if got := normalize(""); got != "" {
+		t.Errorf("normalize empty = %q", got)
+	}
+}
+
+func TestUnifiedDiffLengthDiff(t *testing.T) {
+	got := "a\nb\nc"
+	want := "a\nb"
+	d := unifiedDiff("f", got, want)
+	if d == "" {
+		t.Error("长度不同时 unifiedDiff 不应为空")
+	}
+	if !strings.Contains(d, "首个差异在第") {
+		t.Errorf("unifiedDiff 应含行号: %q", d)
+	}
+}
+
+func TestUnifiedDiffIdentical(t *testing.T) {
+	d := unifiedDiff("f", "same\n", "same\n")
+	if d != "" {
+		t.Errorf("相同内容应返回空 diff, got %q", d)
 	}
 }
