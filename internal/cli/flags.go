@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// envOr 读环境变量，空/缺失回默认。
-func envOr(key, def string) string {
+// EnvOr 读环境变量，空/缺失回默认。
+func EnvOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
@@ -32,13 +32,16 @@ func envBool(key string) bool {
 }
 
 // runCommandFlags run-command 的输入（SPEC-CLI §1：flag > 同名 env > 默认）。
-type runCommandFlags struct {
-	CommentBody string
-	CommentUser string
-	RepoOwner   string
-	IssueNumber string // 先按字符串接收，校验后转 int（复刻"非整数→结果文本"分支）
-	ResultFile  string
-	JSON        bool
+type RunCommandFlags struct {
+	CommentBody     string
+	CommentUser     string
+	RepoOwner       string
+	IssueNumber     string
+	PagesBase       string
+	AuthorName      string
+	AuthorNamespace string
+	ResultFile      string
+	JSON            bool
 }
 
 // doctorFlags doctor 的输入。
