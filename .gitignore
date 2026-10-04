@@ -1,0 +1,31 @@
+# ── 数据（本仓永不持有数据，SPEC-DATA §2） ──
+registry.json
+/scripts/
+/dist/
+/archive/
+command_result.txt
+
+# ── 站点部署产物 ──
+_site/
+dist/index.html
+dist/scripts/
+dist/scripts.json
+dist/commands/
+dist/build-warnings.txt
+
+# ── 运行期临时 ──
+*.tmp
+*.log
+
+# ── Go ──
+*.exe
+*.test
+cover.out
+/bin/
+/sysinfo.json
+
+# ── 迁移期 Python 参照（若补入） ──
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
