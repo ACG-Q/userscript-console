@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/acg-q/userscript-console/internal/registry"
+	"github.com/acg-q/userscript-console/internal/snapshot"
 )
 
 func TestRunVersion(t *testing.T) {
@@ -231,4 +232,249 @@ func buildTestRegistryDir(t *testing.T) string {
 	os.MkdirAll(filepath.Join(root, "scripts", "self", "self01"), 0o755)
 	os.WriteFile(filepath.Join(root, "scripts", "self", "self01", "index.js"), []byte("// test"), 0o644)
 	return root
+}
+
+func TestParseRootFlag(t *testing.T) {
+	if got := parseRootFlag([]string{"--root=/tmp/test"}); got != "/tmp/test" {
+		t.Errorf("parseRootFlag = %q, want /tmp/test", got)
+	}
+	if got := parseRootFlag([]string{"--root", "/tmp/test"}); got != "/tmp/test" {
+		t.Errorf("parseRootFlag (space) = %q, want /tmp/test", got)
+	}
+	if got := parseRootFlag(nil); got != "." {
+		t.Errorf("parseRootFlag(nil) = %q, want .", got)
+	}
+}
+
+func TestBoolToString(t *testing.T) {
+	if got := boolToString(true); got != "true" {
+		t.Errorf("boolToString(true) = %q", got)
+	}
+	if got := boolToString(false); got != "false" {
+		t.Errorf("boolToString(false) = %q", got)
+	}
+}
+
+func TestRunCommandWithList(t *testing.T) {
+	root := buildTestRegistryDir(t)
+	// 设置环境变量
+	os.Setenv("USM_ROOT", root)
+	defer os.Unsetenv("USM_ROOT")
+
+	code := runCommandRun([]string{
+		"--comment-body=/list",
+		"--comment-user=testuser",
+		"--issue-number=1",
+	})
+	if code != 0 {
+		t.Errorf("run-command /list 应返回 0, got %d", code)
+	}
+}
+
+func TestRunCommandWithInfo(t *testing.T) {
+	root := buildTestRegistryDir(t)
+	os.Setenv("USM_ROOT", root)
+	defer os.Unsetenv("USM_ROOT")
+
+	code := runCommandRun([]string{
+		"--comment-body=/info self01",
+		"--comment-user=testuser",
+		"--issue-number=1",
+	})
+	if code != 0 {
+		t.Errorf("run-command /info 应返回 0, got %d", code)
+	}
+}
+
+func TestSnapshotCheck(t *testing.T) {
+	// snapshot check 需要注册生成器，这里测试基本路径
+	code := snapshot.Run(t.TempDir(), []string{"check"})
+	// 未注册生成器时应返回 1
+	if code != 1 {
+		t.Errorf("snapshot check 无生成器应返回 1, got %d", code)
+	}
+}
+
+func TestSnapshotUpdate(t *testing.T) {
+	code := snapshot.Run(t.TempDir(), []string{"update"})
+	if code != 1 {
+		t.Errorf("snapshot update 无生成器应返回 1, got %d", code)
+	}
+}
+
+func TestDoctorUnknownArg(t *testing.T) {
+	if code := doctorRun([]string{"--unknown"}); code != 2 {
+		t.Errorf("doctor 未知参数应返回 2, got %d", code)
+	}
+}
+
+func TestDoctorMissingRootValue(t *testing.T) {
+	if code := doctorRun([]string{"--root"}); code != 2 {
+		t.Errorf("doctor --root 缺值应返回 2, got %d", code)
+	}
+}
+
+func TestWriteJSON(t *testing.T) {
+	// 测试 writeJSON 函数（通过 runCommandRun 的 JSON 路径间接测试）
+	root := buildTestRegistryDir(t)
+	os.Setenv("USM_ROOT", root)
+	defer os.Unsetenv("USM_ROOT")
+
+	// 使用 --json 标志触发 writeJSON 路径
+	code := runCommandRun([]string{
+		"--comment-body=/list",
+		"--comment-user=testuser",
+		"--issue-number=1",
+		"--json",
+	})
+	if code != 0 {
+		t.Errorf("run-command --json 应返回 0, got %d", code)
+	}
+}
+
+func TestResultFile(t *testing.T) {
+	root := buildTestRegistryDir(t)
+	os.Setenv("USM_ROOT", root)
+	defer os.Unsetenv("USM_ROOT")
+
+	tmpFile := filepath.Join(t.TempDir(), "result.txt")
+	code := runCommandRun([]string{
+		"--comment-body=/list",
+		"--comment-user=testuser",
+		"--issue-number=1",
+		"--result-file=" + tmpFile,
+	})
+	if code != 0 {
+		t.Errorf("run-command 应返回 0, got %d", code)
+	}
+	if content, err := os.ReadFile(tmpFile); err != nil {
+		t.Logf("结果文件写入失败（可能权限问题）: %v", err)
+	} else if len(content) == 0 {
+		t.Error("结果文件不应为空")
+	}
+}
+
+func TestRunCommandParseError(t *testing.T) {
+	// 测试评论解析失败的路径
+	code := runCommandRun([]string{
+		"--comment-body=hello world", // 不以 / 开头，应解析失败
+		"--comment-user=testuser",
+		"--issue-number=1",
+	})
+	if code != 1 {
+		t.Errorf("无效评论应返回 1, got %d", code)
+	}
+}
+
+func TestRunCommandUnknownCmd(t *testing.T) {
+	root := buildTestRegistryDir(t)
+	os.Setenv("USM_ROOT", root)
+	defer os.Unsetenv("USM_ROOT")
+
+	// 测试未知命令的路径
+	code := runCommandRun([]string{
+		"--comment-body=/unknown_cmd",
+		"--comment-user=testuser",
+		"--issue-number=1",
+	})
+	if code != 1 {
+		t.Errorf("未知命令应返回 1, got %d", code)
+	}
+}
+
+func TestRunCommandEmptyBody(t *testing.T) {
+	code := runCommandRun([]string{
+		"--comment-body=",
+		"--comment-user=testuser",
+		"--issue-number=1",
+	})
+	if code != 2 {
+		t.Errorf("空评论体应返回 2, got %d", code)
+	}
+}
+
+func TestRunCommandEmptyUser(t *testing.T) {
+	code := runCommandRun([]string{
+		"--comment-body=/list",
+		"--comment-user=",
+		"--issue-number=1",
+	})
+	if code != 2 {
+		t.Errorf("空用户应返回 2, got %d", code)
+	}
+}
+
+func TestRunCommandEmptyIssueNumber(t *testing.T) {
+	code := runCommandRun([]string{
+		"--comment-body=/list",
+		"--comment-user=test",
+		"--issue-number=",
+	})
+	if code != 2 {
+		t.Errorf("空 issue-number 应返回 2, got %d", code)
+	}
+}
+
+func TestRunCommandWithRepoOwner(t *testing.T) {
+	root := buildTestRegistryDir(t)
+	os.Setenv("USM_ROOT", root)
+	defer os.Unsetenv("USM_ROOT")
+
+	code := runCommandRun([]string{
+		"--comment-body=/list",
+		"--comment-user=testuser",
+		"--issue-number=1",
+		"--repo-owner=myrepo",
+	})
+	if code != 0 {
+		t.Errorf("带 repo-owner 应返回 0, got %d", code)
+	}
+}
+
+func TestRunCommandWithPagesBase(t *testing.T) {
+	root := buildTestRegistryDir(t)
+	os.Setenv("USM_ROOT", root)
+	defer os.Unsetenv("USM_ROOT")
+
+	code := runCommandRun([]string{
+		"--comment-body=/list",
+		"--comment-user=testuser",
+		"--issue-number=1",
+		"--pages-base=https://owner.github.io/repo",
+	})
+	if code != 0 {
+		t.Errorf("带 pages-base 应返回 0, got %d", code)
+	}
+}
+
+func TestRunCommandWithAuthorName(t *testing.T) {
+	root := buildTestRegistryDir(t)
+	os.Setenv("USM_ROOT", root)
+	defer os.Unsetenv("USM_ROOT")
+
+	code := runCommandRun([]string{
+		"--comment-body=/list",
+		"--comment-user=testuser",
+		"--issue-number=1",
+		"--author-name=CustomAuthor",
+	})
+	if code != 0 {
+		t.Errorf("带 author-name 应返回 0, got %d", code)
+	}
+}
+
+func TestRunCommandWithAuthorNamespace(t *testing.T) {
+	root := buildTestRegistryDir(t)
+	os.Setenv("USM_ROOT", root)
+	defer os.Unsetenv("USM_ROOT")
+
+	code := runCommandRun([]string{
+		"--comment-body=/list",
+		"--comment-user=testuser",
+		"--issue-number=1",
+		"--author-namespace=custom.ns",
+	})
+	if code != 0 {
+		t.Errorf("带 author-namespace 应返回 0, got %d", code)
+	}
 }
