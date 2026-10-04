@@ -1,0 +1,29 @@
+# golangci-lint 配置（SPEC-ARCH-TEST §4 门禁）
+# Python 侧 ruff/mypy 的 Go 等价：0 issue；SA1019（弃用 API）与 errcheck 必开。
+run:
+  timeout: 5m
+
+linters:
+  disable-all: true
+  enable:
+    - govet
+    - staticcheck   # 含 SA1019
+    - errcheck
+    - ineffassign
+    - unused
+    - gocritic
+    - gofumpt
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: false
+  gocritic:
+    enabled-checks:
+      - ifElseChain
+      - singleCaseSwitch
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0

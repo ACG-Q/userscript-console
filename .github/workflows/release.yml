@@ -1,0 +1,76 @@
+name: Release
+
+# C4-1：tag vX.Y.Z → 多平台二进制 + SHA256 + 移动 v1 大版本 tag。
+# v1 激活后（C4-2）补充：把 linux-amd64 的 sha256 写回 action.yml 内置常量并随 release 提交。
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          # D-07：先仅 Linux；需要时扩展矩阵
+          # - { goos: linux, goarch: arm64 }
+          # - { goos: windows, goarch: amd64 }
+          # - { goos: darwin, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4   # TODO pin by sha
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: 构建
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          set -euo pipefail
+          NAME="usm-${{ matrix.goos }}-${{ matrix.goarch }}"
+          if [ "${{ matrix.goos }}" = "windows" ]; then SUFFIX=".exe"; else SUFFIX=""; fi
+          go build -trimpath \
+            -ldflags "-s -w -X main.version=${GITHUB_REF_NAME#v}" \
+            -o "dist/${NAME}${SUFFIX}" ./cmd/usm
+
+      - name: 校验和
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum usm-* > checksums.txt
+          cat checksums.txt
+
+      - name: 上传 release 资产
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --title "usm ${GITHUB_REF_NAME}" \
+            --generate-notes || \
+          gh release upload "${GITHUB_REF_NAME}" dist/* --clobber
+
+  move-v1-tag:
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 移动 v1 大版本 tag（SPEC-ACTION §5）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --tags
+          git tag -f v1 "${GITHUB_REF_NAME}"
+          git push -f origin v1
