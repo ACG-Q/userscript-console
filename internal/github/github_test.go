@@ -485,6 +485,17 @@ func TestCreateLabel已存在视为成功(t *testing.T) {
 	}
 }
 
+func TestCreateLabelNullReturn(t *testing.T) {
+	d := &fakeDoer{t: t, resps: []resp{
+		{200, okBody(t, map[string]any{"repository": map[string]any{"id": "R_1"}}), nil},
+		{200, okBody(t, map[string]any{"createLabel": map[string]any{"label": nil}}), nil},
+	}}
+	c := newTestClient(t, d)
+	if err := c.CreateLabel(context.Background(), "feat", "4a9d2b", "功能"); err == nil {
+		t.Fatal("CreateLabel null 返回应报错")
+	}
+}
+
 func TestListIssueComments分页与null(t *testing.T) {
 	comment := map[string]any{"id": "IC_1", "author": map[string]any{"login": "u"}, "body": "/list", "createdAt": "2026-10-01T00:00:00Z"}
 	page := func(hasNext bool, cur string) map[string]any {
@@ -556,6 +567,16 @@ func TestDiscussion系列(t *testing.T) {
 		disc, err := c.CreateDiscussion(context.Background(), "DC_1", "标题", "正文")
 		if err != nil || disc.Number != 10 {
 			t.Fatalf("disc=%+v err=%v", disc, err)
+		}
+	})
+	t.Run("null 返回报错", func(t *testing.T) {
+		d := &fakeDoer{t: t, resps: []resp{
+			{200, okBody(t, map[string]any{"repository": map[string]any{"id": "R_1"}}), nil},
+			{200, okBody(t, map[string]any{"createDiscussion": map[string]any{"discussion": nil}}), nil},
+		}}
+		c := newTestClient(t, d)
+		if _, err := c.CreateDiscussion(context.Background(), "DC_1", "t", "b"); err == nil {
+			t.Fatal("CreateDiscussion null 返回应报错")
 		}
 	})
 	t.Run("node入口取版本帖", func(t *testing.T) {

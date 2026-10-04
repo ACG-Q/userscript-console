@@ -93,3 +93,12 @@ func TestParseCRLF(t *testing.T) {
 		t.Errorf("CRLF 解析失败: ok=%v name=%q", ok, h.Name)
 	}
 }
+
+func TestHas(t *testing.T) {
+	if !Has(src) {
+		t.Error("Has 有效源应返回 true")
+	}
+	if Has("no header here") {
+		t.Error("Has 无效源应返回 false")
+	}
+}

@@ -500,3 +500,28 @@ func TestRunCommandWithAuthorNamespace(t *testing.T) {
 		t.Errorf("带 author-namespace 应返回 0, got %d", code)
 	}
 }
+
+func TestBuildSnapshotFiles(t *testing.T) {
+	// buildSnapshotFiles 加载 tests/corpus/inputs/registry.json（相对路径，需从模块根目录运行）
+	// 若语料文件不可达则跳过（CI 环境可能不同）
+	if _, err := os.Stat("tests/corpus/inputs/registry.json"); err != nil {
+		t.Skipf("语料文件不可达，跳过: %v", err)
+	}
+	files, err := buildSnapshotFiles()
+	if err != nil {
+		t.Fatalf("buildSnapshotFiles 失败: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("buildSnapshotFiles 应返回非空文件列表")
+	}
+	if _, ok := files["registry/canonical.json"]; !ok {
+		t.Error("应含 registry/canonical.json")
+	}
+}
+
+func TestNow(t *testing.T) {
+	n := now()
+	if n.IsZero() {
+		t.Error("now() 不应返回零值")
+	}
+}

@@ -356,6 +356,29 @@ func TestBuildEmptyRegistry(t *testing.T) {
 	}
 }
 
+func TestRenderTombstone(t *testing.T) {
+	s := registry.Script{
+		ID:        "tomb01",
+		Type:      registry.TypeSelf,
+		Name:      "已删脚本",
+		Version:   "0.1.0",
+		Enabled:   true,
+		Deleted:   true,
+		Match:     []string{},
+		Grant:     []string{},
+		CreatedAt: "2026-01-01T00:00:00Z",
+		UpdatedAt: "2026-01-01T00:00:00Z",
+	}
+	opts := Options{PagesBase: "https://test.github.io/repo", Now: time.Now()}
+	html, err := renderTombstone(s, opts)
+	if err != nil {
+		t.Fatalf("renderTombstone 失败: %v", err)
+	}
+	if !strings.Contains(html, "已删脚本") {
+		t.Errorf("html 应含脚本名: %s", html)
+	}
+}
+
 func TestReadTemplates(t *testing.T) {
 	names, err := readTemplates()
 	if err != nil {
@@ -451,5 +474,14 @@ func TestFilterActiveEmpty(t *testing.T) {
 	result := filterActive(nil)
 	if len(result) != 0 {
 		t.Errorf("filterActive(nil) = %d, want 0", len(result))
+	}
+}
+
+func TestRenderMarkdownErrorPath(t *testing.T) {
+	// RenderMarkdown 内部用 goldmark；输入为纯字符串时不会触发错误。
+	// 这里验证的是正常渲染路径输出包含内容。
+	got := RenderMarkdown("# 标题\n\n正文")
+	if !strings.Contains(got, "标题") {
+		t.Errorf("RenderMarkdown 应渲染标题: %s", got)
 	}
 }

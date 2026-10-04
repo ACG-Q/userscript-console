@@ -221,3 +221,21 @@ func TestDiscussion标题与正文(t *testing.T) {
 		t.Errorf("未命中占位缺失:\n%s", body2)
 	}
 }
+
+func TestIssueRef(t *testing.T) {
+	s1 := sampleScript()
+	s1.Issue = &registry.IssueRef{Number: 42, NodeID: "I_1", URL: "https://gh.io/1"}
+	if got := issueRef(s1); got != "42" {
+		t.Errorf("issueRef 有 Issue = %q, want 42", got)
+	}
+	s2 := sampleScript()
+	s2.Issue = nil
+	if got := issueRef(s2); got != "—" {
+		t.Errorf("issueRef 无 Issue = %q, want —", got)
+	}
+	s3 := sampleScript()
+	s3.Issue = &registry.IssueRef{Number: 0, NodeID: "", URL: ""}
+	if got := issueRef(s3); got != "—" {
+		t.Errorf("issueRef Number=0 = %q, want —", got)
+	}
+}

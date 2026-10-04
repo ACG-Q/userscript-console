@@ -268,3 +268,11 @@ func TestManualRegistryNormalized(t *testing.T) {
 		t.Errorf("手工对象归一失败: %s", out)
 	}
 }
+
+func TestAdd(t *testing.T) {
+	r := &Registry{Schema: 1}
+	r.Add(Script{ID: "a1", Name: "脚本A"})
+	if len(r.Scripts) != 1 || r.Scripts[0].Name != "脚本A" {
+		t.Errorf("Add 失败: %+v", r.Scripts)
+	}
+}

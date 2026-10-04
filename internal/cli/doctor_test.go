@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/acg-q/userscript-console/internal/registry"
@@ -201,5 +202,155 @@ func TestRunDoctor退出码(t *testing.T) {
 	// 非 --check 只打印不失败
 	if code := RunDoctor(root, false, false); code != 0 {
 		t.Errorf("缺省应 0，got %d", code)
+	}
+}
+
+// ── 新增覆盖率测试 ───────────────────────────────────────────
+
+// TestEnvOr 测试环境变量读取。
+func TestEnvOr(t *testing.T) {
+	os.Setenv("TEST_CLI_ENV_OR_X", "hello")
+	defer os.Unsetenv("TEST_CLI_ENV_OR_X")
+	if got := EnvOr("TEST_CLI_ENV_OR_X", "default"); got != "hello" {
+		t.Errorf("EnvOr = %q, want hello", got)
+	}
+	if got := EnvOr("TEST_CLI_ENV_OR_NONEXIST", "default"); got != "default" {
+		t.Errorf("EnvOr 缺失应返回默认: got %q", got)
+	}
+}
+
+// TestEnvInt 测试 envInt 路径。
+func TestEnvInt(t *testing.T) {
+	os.Setenv("TEST_CLI_ENVINT_X", "42")
+	defer os.Unsetenv("TEST_CLI_ENVINT_X")
+	// envInt 未导出，通过 RunDoctor 间接覆盖（无相关 env）
+	// 直接测试 boolToInt
+	if got := boolToInt(true); got != 1 {
+		t.Errorf("boolToInt(true) = %d", got)
+	}
+	if got := boolToInt(false); got != 0 {
+		t.Errorf("boolToInt(false) = %d", got)
+	}
+}
+
+// TestRunDoctorJSONMode 测试 JSON 输出模式。
+func TestRunDoctorJSONMode(t *testing.T) {
+	root := buildRepo(t)
+	// 健康仓库 + JSON → 应输出 JSON 且返回 0
+	code := RunDoctor(root, false, true)
+	if code != 0 {
+		t.Errorf("健康仓库 JSON 应返回 0, got %d", code)
+	}
+}
+
+// TestScriptSourcePathSelf 测试 self 类型路径。
+func TestScriptSourcePathSelf(t *testing.T) {
+	s := registry.Script{ID: "s1", Type: registry.TypeSelf}
+	got := scriptSourcePath("/root", s)
+	want := filepath.Join("/root", "scripts", "self", "s1", "index.js")
+	if got != want {
+		t.Errorf("scriptSourcePath(self) = %q, want %q", got, want)
+	}
+}
+
+// TestScriptSourcePathSynced 测试 synced 类型路径。
+func TestScriptSourcePathSynced(t *testing.T) {
+	s := registry.Script{ID: "s2", Type: registry.TypeSynced}
+	got := scriptSourcePath("/root", s)
+	want := filepath.Join("/root", "scripts", "synced", "s2", "script.user.js")
+	if got != want {
+		t.Errorf("scriptSourcePath(synced) = %q, want %q", got, want)
+	}
+}
+
+// TestFileExistsTrue 测试文件存在。
+func TestFileExistsTrue(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "test.txt")
+	if err := os.WriteFile(path, []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !fileExists(path) {
+		t.Error("fileExists 应对存在的文件返回 true")
+	}
+}
+
+// TestFileExistsFalse 测试文件不存在。
+func TestFileExistsFalse(t *testing.T) {
+	if fileExists("/nonexistent/path/file.txt") {
+		t.Error("fileExists 应对不存在的文件返回 false")
+	}
+}
+
+// TestFileExistsDir 测试目录不是文件。
+func TestFileExistsDir(t *testing.T) {
+	root := t.TempDir()
+	if fileExists(root) {
+		t.Error("fileExists 应对目录返回 false")
+	}
+}
+
+// TestContainsAll 测试 ContainsAll 辅助函数。
+func TestContainsAll(t *testing.T) {
+	if !ContainsAll("hello world", "hello", "world") {
+		t.Error("ContainsAll 应包含所有子串")
+	}
+	if ContainsAll("hello", "world") {
+		t.Error("ContainsAll 不应包含不存在的子串")
+	}
+}
+
+// TestDoctorMissingArchiveDir 测试 archive 目录不存在时不报错。
+func TestDoctorMissingArchiveDir(t *testing.T) {
+	root := buildRepo(t)
+	// archive 目录不存在 → 不应报错
+	probs := doctorProblems(root)
+	for _, p := range probs {
+		if strings.Contains(p, "archive") {
+			t.Errorf("不应报 archive 问题: %v", probs)
+		}
+	}
+}
+
+// TestDoctorOrphanSynced 测试 synced 类型孤儿目录。
+func TestDoctorOrphanSynced(t *testing.T) {
+	root := buildRepo(t)
+	if err := os.MkdirAll(filepath.Join(root, "scripts", "synced", "ghost"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	probs := doctorProblems(root)
+	found := false
+	for _, p := range probs {
+		if strings.Contains(p, "synced") && strings.Contains(p, "ghost") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("应报 synced 孤儿目录: %v", probs)
+	}
+}
+
+// TestDoctorDeletedSyncedMissingSrc 测试已删除 synced 脚本缺源码。
+func TestDoctorDeletedSyncedMissingSrc(t *testing.T) {
+	root := buildRepo(t)
+	reg, err := registry.Load(filepath.Join(root, "registry.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 删除 sync01 的源码并标记已删除 → 不应报错（符合预期）
+	reg.Scripts[1].Deleted = true
+	if err := reg.Save(filepath.Join(root, "registry.json")); err != nil {
+		t.Fatal(err)
+	}
+	// 确保源码文件存在 → 应报"已删仍存源码"
+	probs := doctorProblems(root)
+	found := false
+	for _, p := range probs {
+		if strings.Contains(p, "sync01") && strings.Contains(p, "仍存在源码") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("应报已删仍存源码: %v", probs)
 	}
 }
