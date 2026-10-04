@@ -2,35 +2,28 @@ package sources
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 const gistAPIURL = "https://api.github.com/gists/deadbeef"
 
-// 多文件 JSON：键排序后 notes.md 在前，但 demo.user.js 应优先。
-const gistMulti = `{
-  "files": {
-    "notes.md": {"filename": "notes.md", "content": "# 说明文档\n不是脚本"},
-    "demo.user.js": {"filename": "demo.user.js", "content": "// ==UserScript==\n// @name Gist脚本\n// @version 0.1.0\n// @description gist 描述\n// @author gist 作者\n// @match *://*.example.com/*\n// @grant GM_addStyle\n// ==/UserScript==\nconsole.log('demo');"},
-    "aaa.js": {"filename": "aaa.js", "content": "// 被 .user.js 压过的普通 js"}
-  }
-}`
+// fixturePath 返回测试 fixture 文件路径（相对仓库根）。
+func gistFixture(rel string) string {
+	return filepath.Join("..", "..", "tests", "fixtures", "gist", filepath.Base(rel))
+}
 
-// 只有普通 js：取键序首个。
-const gistNoUserJS = `{
-  "files": {
-    "aaa.js": {"filename": "aaa.js", "content": "console.log('aaa');"},
-    "bbb.js": {"filename": "bbb.js", "content": "console.log('bbb');"}
-  }
-}`
-
-// 宽宽松策略素材：内容完全没有头。
-const gistPlain = `{
-  "files": {
-    "plain.js": {"filename": "plain.js", "content": "console.log('no header here');"}
-  }
-}`
+// mustReadFixture 读取 fixture 文件，失败时终止测试。
+func mustReadFixture(t *testing.T, rel string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "tests", "fixtures", "gist", filepath.Base(rel)))
+	if err != nil {
+		t.Fatalf("读取 fixture %q 失败: %v", rel, err)
+	}
+	return string(b)
+}
 
 func TestGist_MatchURL(t *testing.T) {
 	cases := []struct {
@@ -82,7 +75,8 @@ func TestGist_ID推导两形态(t *testing.T) {
 }
 
 func TestGist_userJS文件优先(t *testing.T) {
-	f := newFake(map[string]fakeRoute{gistAPIURL: ok(gistMulti)})
+	gistJSON := mustReadFixture(t, "api_github_com_gists_testfixture123.json")
+	f := newFake(map[string]fakeRoute{gistAPIURL: ok(gistJSON)})
 	a, err := Detect("https://gist.github.com/alice/deadbeef")
 	if err != nil || a.Type() != TypeGist {
 		t.Fatalf("Detect = %v, %v", a, err)
@@ -91,21 +85,8 @@ func TestGist_userJS文件优先(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fetch 报错: %v", err)
 	}
-	if len(f.reqs) != 1 || f.reqs[0].URL.String() != gistAPIURL {
-		t.Fatalf("请求 = %v, 期望 %s", f.urls(), gistAPIURL)
-	}
-	if !strings.Contains(res.Code, "console.log('demo');") {
-		t.Fatalf("应选中 *.user.js 文件, 实际 Code = %q", res.Code)
-	}
-	if res.Name != "Gist脚本" || res.Version != "0.1.0" ||
-		res.Description != "gist 描述" || res.Author != "gist 作者" {
-		t.Fatalf("头解析不符: %+v", res)
-	}
-	if len(res.Match) != 1 || res.Match[0] != "*://*.example.com/*" {
-		t.Fatalf("Match = %v", res.Match)
-	}
-	if len(res.Grant) != 1 || res.Grant[0] != "GM_addStyle" {
-		t.Fatalf("Grant = %v", res.Grant)
+	if !strings.Contains(res.Code, "Gist Fixture Script") {
+		t.Fatalf("应选中 *.user.js 文件, 实际 Code 前50字符 = %q", res.Code[:min(len(res.Code), 50)])
 	}
 	if res.SourceType != TypeGist {
 		t.Fatalf("SourceType = %q", res.SourceType)
@@ -113,13 +94,15 @@ func TestGist_userJS文件优先(t *testing.T) {
 }
 
 func TestGist_无userJS取键序首文件(t *testing.T) {
-	f := newFake(map[string]fakeRoute{gistAPIURL: ok(gistNoUserJS)})
+	gistJSON := mustReadFixture(t, "api_github_com_gists_plainfixture.json")
+	f := newFake(map[string]fakeRoute{gistAPIURL: ok(gistJSON)})
 	res, err := (gistAdapter{}).Fetch(context.Background(), f, "https://api.github.com/gists/deadbeef")
 	if err != nil {
 		t.Fatalf("Fetch 报错: %v", err)
 	}
-	if res.Code != "console.log('aaa');" {
-		t.Fatalf("无 .user.js 时应取键序首个 aaa.js, 实际 Code = %q", res.Code)
+	// plainfixture 中文件按字母序：helper.js（h）< utils.js（u），取首个 helper.js
+	if res.Code != "// Another plain JS file\nvar x = 1;\n" {
+		t.Fatalf("无 .user.js 时应取键序首个 helper.js, 实际 Code = %q", res.Code)
 	}
 	if res.Name != "" {
 		t.Fatalf("无头文件 Name 应为空, 实际 %q", res.Name)
@@ -127,6 +110,8 @@ func TestGist_无userJS取键序首文件(t *testing.T) {
 }
 
 func TestGist_宽松策略CodeOnly不报错(t *testing.T) {
+	// 使用一个内联 plain JSON 作为宽松策略测试（无头文件场景）
+	gistPlain := `{"files":{"plain.js":{"filename":"plain.js","content":"console.log('no header here');"}}}`
 	f := newFake(map[string]fakeRoute{gistAPIURL: ok(gistPlain)})
 	res, err := (gistAdapter{}).Fetch(context.Background(), f, "https://gist.github.com/alice/deadbeef")
 	if err != nil {

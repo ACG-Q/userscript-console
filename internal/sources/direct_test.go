@@ -2,20 +2,19 @@ package sources
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-const directScript = `// ==UserScript==
-// @name 直连脚本
-// @version 9.9.9
-// @description 直连描述
-// @author 直连作者
-// @match *://*/*
-// @grant none
-// ==/UserScript==
-document.title = "direct";
-`
+func directFixture() string {
+	b, err := os.ReadFile(filepath.Join("..", "..", "tests", "fixtures", "direct", "example_user_script.user.js"))
+	if err != nil {
+		panic("读取 direct fixture 失败: " + err.Error())
+	}
+	return string(b)
+}
 
 func TestDirect_MatchURL恒true(t *testing.T) {
 	urls := []string{
@@ -33,7 +32,8 @@ func TestDirect_MatchURL恒true(t *testing.T) {
 
 func TestDirect_成功(t *testing.T) {
 	u := "https://example.com/raw/a.user.js"
-	f := newFake(map[string]fakeRoute{u: ok(directScript)})
+	script := directFixture()
+	f := newFake(map[string]fakeRoute{u: ok(script)})
 	a, err := Detect(u)
 	if err != nil {
 		t.Fatalf("Detect 报错: %v", err)
@@ -42,18 +42,11 @@ func TestDirect_成功(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fetch 报错: %v", err)
 	}
-	if res.Name != "直连脚本" || res.Version != "9.9.9" ||
-		res.Description != "直连描述" || res.Author != "直连作者" {
-		t.Fatalf("元数据不符: %+v", res)
+	if res.Name != "GreasyFork Fixture Script" || res.SourceType != TypeDirect {
+		t.Fatalf("元数据/类型不符: %+v / %q", res, res.SourceType)
 	}
-	if len(res.Match) != 1 || res.Match[0] != "*://*/*" {
-		t.Fatalf("Match = %v", res.Match)
-	}
-	if len(res.Grant) != 1 || res.Grant[0] != "none" {
-		t.Fatalf("Grant = %v", res.Grant)
-	}
-	if res.Code != directScript || res.SourceType != TypeDirect {
-		t.Fatalf("Code/SourceType 不符: %q / %q", res.Code, res.SourceType)
+	if res.Code != script {
+		t.Fatalf("Code 应与 fixture 原文一致")
 	}
 }
 

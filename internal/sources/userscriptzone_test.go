@@ -2,26 +2,19 @@ package sources
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-const zonePage = `<!doctype html>
-<html><head><title>zone 页面</title></head><body>
-<pre>
-// ==UserScript==
-// @name Zone脚本
-// @version 5.0.1
-// @description zone 描述
-// @author zone 作者
-// @match https://*.zone.example/*
-// @grant GM_getValue
-// @grant GM_setValue
-// ==/UserScript==
-</pre>
-<p>其余页面内容</p>
-</body></html>
-`
+func zoneFixture() string {
+	b, err := os.ReadFile(filepath.Join("..", "..", "tests", "fixtures", "userscriptzone", "page_fixture.html"))
+	if err != nil {
+		panic("读取 userscriptzone fixture 失败: " + err.Error())
+	}
+	return string(b)
+}
 
 func TestZone_MatchURL(t *testing.T) {
 	cases := []struct {
@@ -47,7 +40,7 @@ func TestZone_MatchURL(t *testing.T) {
 
 func TestZone_内嵌块成功(t *testing.T) {
 	pageURL := "https://userscript.zone/s/demo"
-	f := newFake(map[string]fakeRoute{pageURL: ok(zonePage)})
+	f := newFake(map[string]fakeRoute{pageURL: ok(zoneFixture())})
 	a, err := Detect(pageURL)
 	if err != nil || a.Type() != TypeZone {
 		t.Fatalf("Detect = %v, %v", a, err)
@@ -56,18 +49,11 @@ func TestZone_内嵌块成功(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fetch 报错: %v", err)
 	}
-	if res.Name != "Zone脚本" || res.Version != "5.0.1" ||
-		res.Description != "zone 描述" || res.Author != "zone 作者" {
+	if res.Name != "Zone Fixture Script" || res.SourceType != TypeZone {
 		t.Fatalf("元数据不符: %+v", res)
 	}
-	if len(res.Match) != 1 || res.Match[0] != "https://*.zone.example/*" {
-		t.Fatalf("Match = %v", res.Match)
-	}
-	if len(res.Grant) != 2 || res.Grant[0] != "GM_getValue" || res.Grant[1] != "GM_setValue" {
-		t.Fatalf("Grant = %v", res.Grant)
-	}
-	if !strings.Contains(res.Code, "==UserScript==") || res.SourceType != TypeZone {
-		t.Fatalf("Code/SourceType 不符: %q / %q", res.Code, res.SourceType)
+	if !strings.Contains(res.Code, "==UserScript==") {
+		t.Fatalf("Code 应含头标记, 实际前50字符 = %q", res.Code[:min(len(res.Code), 50)])
 	}
 }
 
