@@ -710,3 +710,39 @@ func TestUpdateIssueRawError(t *testing.T) {
 		t.Fatal("UpdateIssue GraphQL error 应返回 error")
 	}
 }
+
+func TestCreateIssueNullReturn(t *testing.T) {
+	d := &fakeDoer{t: t, resps: []resp{
+		{200, okBody(t, map[string]any{"repository": map[string]any{"id": "R_1"}}), nil},
+		{200, okBody(t, map[string]any{"createIssue": map[string]any{"issue": nil}}), nil},
+	}}
+	c := newTestClient(t, d)
+	if _, err := c.CreateIssue(context.Background(), "t", "b"); err == nil {
+		t.Fatal("CreateIssue null 返回应报错")
+	}
+}
+
+func TestGetIssueNullReturn(t *testing.T) {
+	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{
+		"repository": map[string]any{"issue": nil},
+	}), nil}}}
+	c := newTestClient(t, d)
+	if _, err := c.GetIssue(context.Background(), 99); err == nil {
+		t.Fatal("GetIssue null 返回应报错")
+	}
+}
+
+func TestDiscussionCommentsEndCursorEmpty(t *testing.T) {
+	node := map[string]any{
+		"id":       "D_1",
+		"comments": map[string]any{
+			"pageInfo": map[string]any{"hasNextPage": true, "endCursor": ""},
+			"nodes":    []any{},
+		},
+	}
+	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{"node": node}), nil}}}
+	c := newTestClient(t, d)
+	if _, err := c.DiscussionComments(context.Background(), "D_1"); err == nil {
+		t.Fatal("DiscussionComments endCursor 空应报错")
+	}
+}
