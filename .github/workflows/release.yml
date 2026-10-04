@@ -23,9 +23,9 @@ jobs:
           # - { goos: windows, goarch: amd64 }
           # - { goos: darwin, goarch: arm64 }
     steps:
-      - uses: actions/checkout@v4   # TODO pin by sha
+      - uses: actions/checkout@v5   # TODO pin by sha
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 

@@ -17,9 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4   # TODO pin by sha（仓库惯例，见 SPEC-ACTION §4.6）
+      - uses: actions/checkout@v5   # TODO pin by sha（仓库惯例，见 SPEC-ACTION §4.6）
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
