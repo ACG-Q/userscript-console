@@ -146,11 +146,15 @@ func parseCommand(body string) string {
 	if !strings.HasPrefix(first, "/") {
 		return "unknown"
 	}
-	parts := strings.SplitN(first[1:], " ", 2)
-	if len(parts) == 0 {
+	// 仅有斜杠时返回 unknown
+	if len(first) <= 1 {
 		return "unknown"
 	}
-	return parts[0]
+	parts := strings.SplitN(first[1:], " ", 2)
+	if len(parts) == 0 || parts[0] == "" {
+		return "unknown"
+	}
+	return strings.ToLower(parts[0])
 }
 
 // ParseCommand 导出 parseCommand 供外部包使用。

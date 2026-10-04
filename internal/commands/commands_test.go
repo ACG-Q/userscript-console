@@ -332,6 +332,25 @@ func TestRegisterDuplicate(t *testing.T) {
 	})
 }
 
+func TestRegisterWithCustomRun(t *testing.T) {
+	Register(Command{
+		Name:  "custom_test",
+		Help:  "自定义命令",
+		Usage: "/custom_test",
+		Run: func(env *Env, args string, code []string) (Result, error) {
+			return Result{Text: "custom result"}, nil
+		},
+	})
+	env, _ := buildTestEnvWithSource(t)
+	res, err := Execute("custom_test", env, "", nil)
+	if err != nil {
+		t.Fatalf("自定义命令执行失败: %v", err)
+	}
+	if res.Text != "custom result" {
+		t.Errorf("应返回 custom result，实际: %q", res.Text)
+	}
+}
+
 func TestRegisterEmptyName(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {

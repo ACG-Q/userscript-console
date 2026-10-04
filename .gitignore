@@ -21,6 +21,7 @@ dist/build-warnings.txt
 *.exe
 *.test
 cover.out
+*.out
 /bin/
 /sysinfo.json
 

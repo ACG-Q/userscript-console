@@ -47,7 +47,15 @@ jobs:
         run: go run ./cmd/usm snapshot check
 
       - name: 数据自检
-        run: go run ./cmd/usm doctor --check
+        # doctor 面向**内容仓**的真实数据（registry.json / scripts/ / dist/）。
+        # 本工具仓按设计不持有任何数据文件（README §1），故此处按需运行：
+        # 仅当仓库根存在 registry.json 时才跑，避免把「无数据」误判为失败。
+        run: |
+          if [ -f registry.json ]; then
+            go run ./cmd/usm doctor --check
+          else
+            echo "本仓不持有 registry.json（预期），跳过数据自检"
+          fi
 
       - name: 构建冒烟
         run: go build ./...

@@ -1,6 +1,7 @@
 package cleanup
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,7 +17,7 @@ func TestLoadMissingFile(t *testing.T) {
 
 func TestLoadBadJSON(t *testing.T) {
 	root := t.TempDir()
-	path := root + "/bad.json"
+	path := filepath.Join(root, "bad.json")
 	if err := os.WriteFile(path, []byte("not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -26,15 +27,35 @@ func TestLoadBadJSON(t *testing.T) {
 	}
 }
 
+func TestLoadSchemaDefault(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "archive.json")
+	if err := os.WriteFile(path, []byte(`{"commands":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load 失败: %v", err)
+	}
+	if a.Schema != 1 {
+		t.Errorf("缺 schema 时应默认 1，实际: %d", a.Schema)
+	}
+}
+
 func TestSaveAndLoad(t *testing.T) {
 	root := t.TempDir()
-	path := root + "/archive.json"
+	path := filepath.Join(root, "archive.json")
 	a := &Archive{
 		Schema: 1,
 		Commands: []CommandKey{
-			{Command: "add", Author: "u1", CreatedAt: time.Now(), Results: []Result{
-				{ID: "r1", Author: "u1", Body: "/add url", CreatedAt: time.Now()},
-			}},
+			{
+				Command:   "add",
+				Author:    "u1",
+				CreatedAt: time.Now(),
+				Results: []Result{
+					{ID: "r1", Author: "u1", Body: "/add url", CreatedAt: time.Now()},
+				},
+			},
 		},
 	}
 	if err := Save(path, a); err != nil {
@@ -46,6 +67,49 @@ func TestSaveAndLoad(t *testing.T) {
 	}
 	if a2.Schema != 1 || len(a2.Commands) != 1 {
 		t.Errorf("Load 结果不符: schema=%d, commands=%d", a2.Schema, len(a2.Commands))
+	}
+}
+
+// TestSave_Idempotent 幂等：Load→Save→Load 两次保存后字节一致（SPEC-DATA I-2）。
+func TestSave_Idempotent(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "archive.json")
+	a := &Archive{
+		Schema: 1,
+		Commands: []CommandKey{
+			{
+				Command:   "add",
+				Author:    "u1",
+				CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+				Results: []Result{
+					{ID: "r1", Author: "u1", Body: "/add url", CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
+				},
+			},
+		},
+	}
+	if err := Save(path, a); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(path, loaded); err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Errorf("Load→Save 幂等失败:\nfirst:  %s\nsecond: %s", first, second)
+	}
+	if bytes.HasSuffix(second, []byte("\n")) {
+		t.Error("归档文件不应有结尾换行（SPEC-DATA §1.1 规则 4）")
 	}
 }
 
@@ -66,15 +130,22 @@ func TestGroup(t *testing.T) {
 	if len(groups["unknown"]) != 1 {
 		t.Errorf("unknown 组应有 1 条，实际: %d", len(groups["unknown"]))
 	}
+	// 组内应按时间倒序（最新在前）
+	if groups["list"][0].ID != "r3" {
+		t.Errorf("list 组应按时间倒序，首条应为 r3，实际: %s", groups["list"][0].ID)
+	}
 }
 
 func TestMergeArchive(t *testing.T) {
 	existing := &Archive{
 		Schema: 1,
 		Commands: []CommandKey{
-			{Command: "add", Results: []Result{
-				{ID: "r1", Author: "u1", Body: "/add url", CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
-			}},
+			{
+				Command: "add",
+				Results: []Result{
+					{ID: "r1", Author: "u1", Body: "/add url", CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
+				},
+			},
 		},
 	}
 	newResults := map[string][]Result{
@@ -94,12 +165,32 @@ func TestMergeArchive(t *testing.T) {
 	}
 }
 
+// TestMergeArchiveNilExisting existing 为 nil 时应新建归档。
+func TestMergeArchiveNilExisting(t *testing.T) {
+	newResults := map[string][]Result{
+		"list": {{ID: "r1", Author: "u1", Body: "/list", CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}},
+	}
+	merged := MergeArchive(nil, newResults, 10)
+	if merged.Schema != 1 {
+		t.Errorf("nil existing 时 schema 应为 1，实际: %d", merged.Schema)
+	}
+	if len(merged.Commands) != 1 {
+		t.Errorf("应有 1 个命令组，实际: %d", len(merged.Commands))
+	}
+	if merged.Commands[0].Author != "u1" {
+		t.Errorf("Author 应取首条结果的作者，实际: %s", merged.Commands[0].Author)
+	}
+}
+
 func TestMergeArchiveKeep(t *testing.T) {
 	existing := &Archive{Schema: 1, Commands: []CommandKey{
-		{Command: "add", Results: []Result{
-			{ID: "r1", Author: "u1", Body: "/add", CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
-			{ID: "r2", Author: "u2", Body: "/add", CreatedAt: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)},
-		}},
+		{
+			Command: "add",
+			Results: []Result{
+				{ID: "r1", Author: "u1", Body: "/add", CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
+				{ID: "r2", Author: "u2", Body: "/add", CreatedAt: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)},
+			},
+		},
 	}}
 	newResults := map[string][]Result{
 		"add": {{ID: "r3", Author: "u3", Body: "/add", CreatedAt: time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)}},
@@ -131,36 +222,84 @@ func TestParseCommand(t *testing.T) {
 	}
 }
 
-// TestSave_ReadonlyDir 只读目录中创建临时文件应报错。
+// TestParseCommandEdgeCases parseCommand 边界情况（仅斜杠 / 大写 / CR LF 等）。
+func TestParseCommandEdgeCases(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"仅斜杠", "/", "unknown"},
+		{"斜杠加空格", "/ ", "unknown"},
+		{"大写命令", "/ADD url", "add"},
+		{"命令带等号", "/add=url", "add=url"},
+		{"仅换行", "\n\n", "unknown"},
+		{"多行首行命令", "/list\nmore content", "list"},
+		{"首行非命令", "text\n/add url", "unknown"},
+		{"制表符", "\t/list\t", "list"},
+		{"CR LF", "/rm\r\nid", "rm"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ParseCommand(tt.body); got != tt.want {
+				t.Errorf("ParseCommand(%q) = %q, want %q", tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSave_ReadonlyDir 只读目录中 Save 的行为可预期（不 panic）。
 func TestSave_ReadonlyDir(t *testing.T) {
 	root := t.TempDir()
-	// 创建只读目录
 	readonlyDir := filepath.Join(root, "readonly")
 	if err := os.MkdirAll(readonlyDir, 0o555); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(readonlyDir, "archive.json")
 	a := &Archive{Schema: 1}
-	// 在只读目录上 Save：CreateTemp 应失败（Windows 下 0o555 仍可创建文件，
-	// 此处断言不报错即为接受；若报错则通过）
-	err := Save(path, a)
-	// Windows 下目录权限 0o555 不影响写入，因此不强制断言；
-	// 但确保 Save 接口行为可预期（不 panic，返回错误或成功）
-	_ = err
+	// Windows 下目录权限 0o555 不阻止写入，因此不强制断言错误；
+	// 只验证接口行为可预期（不 panic，返回错误或成功）
+	_ = Save(path, a)
 }
 
 // TestSave_ParentIsFile 父路径为文件时 MkdirAll 应报错。
 func TestSave_ParentIsFile(t *testing.T) {
 	root := t.TempDir()
-	// 创建父路径为普通文件的场景
 	parentFile := filepath.Join(root, "parentfile")
 	if err := os.WriteFile(parentFile, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(parentFile, "child", "archive.json")
 	a := &Archive{Schema: 1}
-	err := Save(path, a)
-	if err == nil {
+	if err := Save(path, a); err == nil {
 		t.Fatal("父路径为文件时 Save 应报错")
+	}
+}
+
+// TestSave_NilArchive nil 归档序列化为 null（不崩溃）。
+func TestSave_NilArchive(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "archive.json")
+	if err := Save(path, nil); err != nil {
+		t.Fatalf("Save(nil) 应成功: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		t.Errorf("nil 归档应序列化为 null: %s", data)
+	}
+}
+
+// TestSave_NestedDirs Save 应自动创建多级父目录。
+func TestSave_NestedDirs(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "a", "b", "c", "archive.json")
+	if err := Save(path, &Archive{Schema: 1}); err != nil {
+		t.Fatalf("Save 应自动创建多级目录: %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("归档文件应存在: %v", err)
 	}
 }
