@@ -797,3 +797,70 @@ func TestDiscussionCategoriesEmpty(t *testing.T) {
 		t.Fatal("DiscussionCategories 空分类应报错")
 	}
 }
+
+func TestGetIssueSuccess(t *testing.T) {
+	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{
+		"repository": map[string]any{"issue": gqlIssueJSON("I_42", 42)},
+	}), nil}}}
+	c := newTestClient(t, d)
+	iss, err := c.GetIssue(context.Background(), 42)
+	if err != nil {
+		t.Fatalf("GetIssue 应成功: %v", err)
+	}
+	if iss.Number != 42 {
+		t.Errorf("Number = %d, want 42", iss.Number)
+	}
+}
+
+func TestCreateIssueSuccess(t *testing.T) {
+	d := &fakeDoer{t: t, resps: []resp{
+		{200, okBody(t, map[string]any{"repository": map[string]any{"id": "R_1"}}), nil},
+		{200, okBody(t, map[string]any{"createIssue": map[string]any{"issue": gqlIssueJSON("I_5", 5)}}), nil},
+	}}
+	c := newTestClient(t, d)
+	iss, err := c.CreateIssue(context.Background(), "标题", "正文")
+	if err != nil {
+		t.Fatalf("CreateIssue 应成功: %v", err)
+	}
+	if iss.Number != 5 {
+		t.Errorf("Number = %d, want 5", iss.Number)
+	}
+}
+
+func TestTransitionSuccess(t *testing.T) {
+	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{
+		"closeIssue": map[string]any{"issue": map[string]any{"id": "I_1", "number": 1, "state": "CLOSED"}},
+	}), nil}}}
+	c := newTestClient(t, d)
+	if err := c.CloseIssue(context.Background(), "I_1"); err != nil {
+		t.Fatalf("CloseIssue 应成功: %v", err)
+	}
+}
+
+func TestDeleteCommentRawError(t *testing.T) {
+	d := &fakeDoer{t: t, resps: []resp{{200, errBody("GraphQL error"), nil}}}
+	c := newTestClient(t, d)
+	if err := c.DeleteComment(context.Background(), "IC_1"); err == nil {
+		t.Fatal("DeleteComment GraphQL 错误应返回 error")
+	}
+}
+
+func TestListIssueCommentsSuccess(t *testing.T) {
+	comment := map[string]any{"id": "IC_1", "author": map[string]any{"login": "alice"}, "body": "ok", "createdAt": "2026-01-01T00:00:00Z"}
+	page := map[string]any{
+		"repository": map[string]any{"issue": map[string]any{"comments": map[string]any{
+			"pageInfo": map[string]any{"hasNextPage": false, "endCursor": ""},
+			"nodes":    []any{comment},
+		}}},
+	}
+	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, page), nil}}}
+	c := newTestClient(t, d)
+	comments, err := c.ListIssueComments(context.Background(), 7, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(comments) != 1 || comments[0].Author != "alice" {
+		t.Errorf("结果不符: %+v", comments)
+	}
+}
+
