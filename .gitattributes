@@ -1,0 +1,5 @@
+# 快照/golden 字节比对依赖统一行尾（Windows 下防 CRLF 污染）
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
