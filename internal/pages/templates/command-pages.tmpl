@@ -1,0 +1,48 @@
+{{define "command-pages"}}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>命令分页 - 脚本控制台</title>
+    <link rel="stylesheet" href="/static/tokens/components.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>命令分页</h1>
+        </header>
+        
+        <main>
+            {{if .Commands}}
+            <nav class="pagination">
+                {{range $i, $cmd := .Commands}}
+                <div class="page {{if eq $i 0}}active{{end}}">
+                    <a href="/commands/{{$i + 1}}">{{$cmd.Name}}</a>
+                </div>
+                {{end}}
+            </nav>
+            
+            <section class="commands-list">
+                {{range .Commands}}
+                <article class="command-entry">
+                    <header>
+                        <h2>{{.Name}}</h2>
+                        <p class="description">{{.Help}}</p>
+                    </header>
+                    <div class="syntax">
+                        <code>{{.Usage}}</code>
+                    </div>
+                </article>
+                {{end}}
+            </section>
+            {{else}}
+            <p>没有可用的命令。</p>
+            {{end}}
+        </main>
+    </div>
+    
+    <script src="/static/filter/list.js"></script>
+</body>
+</html>
+{{end}}

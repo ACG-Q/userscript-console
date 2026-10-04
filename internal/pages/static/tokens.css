@@ -1,0 +1,22 @@
+/* CSS Reset & Tokens */
+:root {
+    --color-bg: #fafafa;
+    --color-surface: #ffffff;
+    --color-border: #e0e0e0;
+    --color-text: #202124;
+    --color-muted: #5f6368;
+    --color-primary: #1a73e8;
+    --color-success: #137333;
+    --color-danger: #c5221f;
+    --color-warning: #b06000;
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
+    --shadow-md: 0 2px 8px rgba(0,0,0,0.1);
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "SF Mono", Monaco, Consolas, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font-family: var(--font-sans); background: var(--color-bg); color: var(--color-text); line-height: 1.6; }

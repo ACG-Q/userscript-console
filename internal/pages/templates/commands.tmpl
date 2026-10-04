@@ -1,0 +1,54 @@
+{{define "commands"}}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>命令归档 · {{.Command}}</title>
+    <style>
+        :root { --bg: #fafafa; --card-bg: #fff; --border: #e0e0e0; --text: #333; --muted: #666; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
+        h1 { margin-bottom: 1.5rem; }
+        .entry { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+        .entry header { margin-bottom: 0.75rem; }
+        .entry h2 { font-size: 1.1rem; }
+        .entry .meta { color: var(--muted); font-size: 0.875rem; }
+        .entry .body { margin-top: 0.5rem; white-space: pre-wrap; }
+        .pagination { display: flex; gap: 0.5rem; justify-content: center; margin-top: 2rem; }
+        .pagination a, .pagination span { padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 4px; text-decoration: none; }
+        .pagination .active { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+        .back { display: inline-block; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a class="back" href="{{.Base}}/commands">← 返回命令列表</a>
+        <h1>命令归档: {{.Command}}</h1>
+        <p style="color:var(--muted)">共 {{.TotalItems}} 条结果，第 {{.Page}}/{{.TotalPages}} 页</p>
+        {{range .Items}}
+        <div class="entry">
+            <header>
+                <h2>ID: {{.ID}}</h2>
+                <div class="meta">由 {{.Author}} 执行</div>
+            </header>
+            <div class="body">{{.Body}}</div>
+        </div>
+        {{else}}
+        <p style="color:var(--muted)">暂无记录</p>
+        {{end}}
+        {{if gt .TotalPages 1}}
+        <div class="pagination">
+            {{if gt .Page 1}}<a href="?page={{sub .Page 1}}">上一页</a>{{else}}<span>上一页</span>{{end}}
+            {{range $i := seq .TotalPages}}
+                {{if eq (add $i 1) .Page}}<span class="active">{{$i}}</span>
+                {{else}}<a href="?page={{$i}}">{{$i}}</a>{{end}}
+            {{end}}
+            {{if lt .Page .TotalPages}}<a href="?page={{add .Page 1}}">下一页</a>{{else}}<span>下一页</span>{{end}}
+        </div>
+        {{end}}
+    </div>
+</body>
+</html>
+{{end}}
