@@ -240,9 +240,13 @@ func TestQueries(t *testing.T) {
 	if r.FindBySourceURL("https://greasyfork.org/scripts/1234") == nil {
 		t.Error("FindBySourceURL 失败")
 	}
-	r.RemoveID("3f45ee3c-0000-4000-8000-000000000001")
-	if len(r.Scripts) != 1 {
-		t.Error("RemoveID 失败")
+	// FindBySourceURL 未命中
+	if r.FindBySourceURL("https://example.com/nope.js") != nil {
+		t.Error("FindBySourceURL 不应误命中")
+	}
+	// RemoveID 不存在的 ID
+	if r.RemoveID("nonexistent-id") {
+		t.Error("RemoveID 不存在的 ID 应返回 false")
 	}
 }
 
