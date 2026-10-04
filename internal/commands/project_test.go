@@ -135,12 +135,12 @@ func TestBuildIssueBodyDeleted(t *testing.T) {
 // TestBuildIssueBodySynced 测试 synced 类型脚本。
 func TestBuildIssueBodySynced(t *testing.T) {
 	s := &registry.Script{
-		ID:         "sync01",
-		Name:       "同步脚本",
-		Type:       registry.TypeSynced,
-		Version:    "1.0.0",
-		Enabled:    true,
-		SourceURL:  strPtr("https://example.com/script.user.js"),
+		ID:        "sync01",
+		Name:      "同步脚本",
+		Type:      registry.TypeSynced,
+		Version:   "1.0.0",
+		Enabled:   true,
+		SourceURL: strPtr("https://example.com/script.user.js"),
 	}
 
 	body := buildIssueBody(s, "")
