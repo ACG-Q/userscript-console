@@ -112,3 +112,62 @@ func TestIgnoredFiles不参与孤儿判定(t *testing.T) {
 		t.Error("README 被误删")
 	}
 }
+
+func TestRegisterDefaultPanic(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("重复 RegisterDefault 应 panic")
+		}
+	}()
+	RegisterDefault(func() (map[string]string, error) {
+		return map[string]string{"x": "y"}, nil
+	})
+	RegisterDefault(func() (map[string]string, error) {
+		return nil, nil
+	})
+}
+
+func TestRunNoGenerator(t *testing.T) {
+	// 确保 defaultGen 为 nil（测试隔离）
+	if code := Run(t.TempDir(), []string{"check"}); code != 1 {
+		t.Errorf("未注册生成器应 exit 1, got %d", code)
+	}
+}
+
+func TestRunUpdatePath(t *testing.T) {
+	dir := t.TempDir()
+	// 确保 defaultGen 为 nil（测试隔离）
+	defaultGen = nil
+	RegisterDefault(func() (map[string]string, error) {
+		return map[string]string{"test.txt": "content\n"}, nil
+	})
+	defer func() { defaultGen = nil }()
+	if code := Run(dir, []string{"update"}); code != 0 {
+		t.Errorf("update 应 exit 0, got %d", code)
+	}
+	// normalize 会移除末尾换行，所以写入文件后内容应为 "content"
+	if content, _ := os.ReadFile(filepath.Join(dir, "test.txt")); string(content) != "content" {
+		t.Errorf("update 应写文件，实际: %q", content)
+	}
+}
+
+func TestRunCheckPath(t *testing.T) {
+	dir := t.TempDir()
+	// 确保 defaultGen 为 nil（测试隔离）
+	defaultGen = nil
+	RegisterDefault(func() (map[string]string, error) {
+		return map[string]string{"test.txt": "content\n"}, nil
+	})
+	defer func() { defaultGen = nil }()
+	// 先 update
+	Run(dir, []string{"update"})
+	// 再 check 应一致
+	if code := Run(dir, []string{"check"}); code != 0 {
+		t.Errorf("check 一致应 exit 0, got %d", code)
+	}
+	// 修改文件后 check 应不一致
+	os.WriteFile(filepath.Join(dir, "test.txt"), []byte("modified\n"), 0o644)
+	if code := Run(dir, []string{"check"}); code != 1 {
+		t.Errorf("check 不一致应 exit 1, got %d", code)
+	}
+}

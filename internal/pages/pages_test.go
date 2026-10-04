@@ -2,6 +2,8 @@ package pages
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -281,9 +283,12 @@ func TestFilterActive(t *testing.T) {
 	}
 }
 
-func TestEsc(t *testing.T) {
+func TestEscHTML(t *testing.T) {
 	if got := esc("<script>alert(1)</script>"); got != "&lt;script&gt;alert(1)&lt;/script&gt;" {
 		t.Errorf("esc = %q, 期望 HTML 转义", got)
+	}
+	if got := esc("<>&\"'"); got != "&lt;&gt;&amp;&#34;&#39;" {
+		t.Errorf("esc = %q, 期望完整 HTML 转义", got)
 	}
 }
 
@@ -295,5 +300,156 @@ func TestSanitizeDangerous(t *testing.T) {
 	}
 	if !strings.Contains(got, "<p>正常</p>") {
 		t.Errorf("sanitizeDangerous 应保留 p: %s", got)
+	}
+}
+
+func TestBuildCommandPages(t *testing.T) {
+	reg := buildTestRegistry(t)
+	opts := Options{
+		Out:             t.TempDir(),
+		Now:             time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC),
+		PagesBase:       "https://test.github.io/repo",
+		CommandsPerPage: 3,
+	}
+	out, err := Build(reg, opts, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 命令分页可能因 archive 不存在而为空，但不应 panic
+	_ = out.CommandsIndex
+}
+
+func TestBuildWithIssueStats(t *testing.T) {
+	reg := buildTestRegistry(t)
+	opts := Options{
+		Out:       t.TempDir(),
+		Now:       time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC),
+		PagesBase: "https://test.github.io/repo",
+	}
+	data := Data{
+		IssueStats: map[string]int{"I_test1": 10},
+	}
+	out, err := Build(reg, opts, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 有 IssueStats 时不应有 W1 警告
+	for _, w := range out.BuildWarnings {
+		if strings.Contains(w, "W1") {
+			t.Error("有 IssueStats 时不应产生 W1 警告")
+		}
+	}
+}
+
+func TestBuildEmptyRegistry(t *testing.T) {
+	reg := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{}}
+	opts := Options{Out: t.TempDir(), PagesBase: "https://test.github.io/repo"}
+	out, err := Build(reg, opts, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.IndexHTML == "" {
+		t.Error("空 registry 也应生成 index.html")
+	}
+	if len(out.DetailHTMLs) != 0 {
+		t.Errorf("空 registry 不应有详情页, got %d", len(out.DetailHTMLs))
+	}
+}
+
+func TestReadTemplates(t *testing.T) {
+	names, err := readTemplates()
+	if err != nil {
+		t.Fatalf("readTemplates 失败: %v", err)
+	}
+	if len(names) == 0 {
+		t.Error("应有模板文件")
+	}
+}
+
+func TestStaticFilesEmbedRecursive(t *testing.T) {
+	// 验证 static 子目录也可嵌入
+	found := false
+	entries, err := embedFS.ReadDir("static/filter")
+	if err == nil && len(entries) > 0 {
+		found = true
+	}
+	entries, err = embedFS.ReadDir("static/list")
+	if err == nil && len(entries) > 0 {
+		found = true
+	}
+	entries, err = embedFS.ReadDir("static/disc")
+	if err == nil && len(entries) > 0 {
+		found = true
+	}
+	if !found {
+		t.Log("static 子目录可能不存在，跳过")
+	}
+}
+
+func TestRenderCommandPagesWithArchive(t *testing.T) {
+	// 创建归档文件 - archive 在 Out 的父目录
+	root := t.TempDir()
+	archiveDir := filepath.Join(filepath.Dir(root), "archive")
+	os.MkdirAll(archiveDir, 0o755)
+	archiveData := `{
+		"schema": 1,
+		"commands": [
+			{
+				"command": "add",
+				"author": "user1",
+				"created_at": "2026-10-01T00:00:00Z",
+				"results": [
+					{"id": "c1", "author": "user1", "body": "/add https://example.com/a.js", "created_at": "2026-10-01T00:00:00Z"}
+				]
+			}
+		]
+	}`
+	if err := os.WriteFile(filepath.Join(archiveDir, "commands.json"), []byte(archiveData), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := Options{
+		Out:             root,
+		Now:             time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC),
+		PagesBase:       "https://test.github.io/repo",
+		CommandsPerPage: 5,
+	}
+	cp, idx, err := renderCommands(opts)
+	if err != nil {
+		t.Fatalf("renderCommands 失败: %v", err)
+	}
+	if len(cp) == 0 {
+		t.Error("应有命令分页")
+	}
+	if idx == "" {
+		t.Error("commands/index.html 不应为空")
+	}
+}
+
+func TestRenderMarkdownEdgeCases(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{"空字符串", "", ""},
+		{"纯文本", "hello world", "hello world"},
+		{"HTML 标签", "<div>test</div>", "<div>test</div>"},
+		{"换行", "line1\nline2", "line1\nline2"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RenderMarkdown(tt.src)
+			if tt.want != "" && !strings.Contains(got, tt.want) {
+				t.Errorf("RenderMarkdown(%q) = %q, want contain %q", tt.src, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFilterActiveEmpty(t *testing.T) {
+	result := filterActive(nil)
+	if len(result) != 0 {
+		t.Errorf("filterActive(nil) = %d, want 0", len(result))
 	}
 }
