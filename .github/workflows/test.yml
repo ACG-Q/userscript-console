@@ -40,9 +40,8 @@ jobs:
         run: |
           go test ./... -covermode=atomic -coverprofile=cover.out
           go tool cover -func=cover.out | tail -1
-          # TODO 集成阶段收紧阈值（SPEC-ARCH-TEST §4: ≥90%）
-          # pct=$(go tool cover -func=cover.out | tail -1 | grep -oE '[0-9.]+%' | tr -d '%')
-          # awk -v p="$pct" 'BEGIN{exit !(p>=90)}'
+          pct=$(go tool cover -func=cover.out | tail -1 | grep -oE '[0-9.]+%' | tr -d '%')
+          awk -v p="$pct" 'BEGIN{exit !(p>=90)}'
 
       # TODO 集成阶段启用（快照生成器接线后）:
       # - name: 快照基线
