@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -537,5 +538,71 @@ func TestInfoByName(t *testing.T) {
 	}
 	if !strings.Contains(res.Text, "同步脚本") {
 		t.Errorf("info 应显示脚本信息: %s", res.Text)
+	}
+}
+
+// TestAddSelfScriptWriteError 测试写入脚本文件失败路径。
+func TestAddSelfScriptWriteError(t *testing.T) {
+	root := t.TempDir()
+	// 创建一个 registry
+	reg := &registry.Registry{
+		Schema: registry.SchemaVersion,
+		Scripts: []registry.Script{},
+	}
+	if err := reg.Save(filepath.Join(root, "registry.json")); err != nil {
+		t.Fatal(err)
+	}
+	// 将 scripts 目录设为文件，使后续写入失败
+	scriptsDir := filepath.Join(root, "scripts")
+	os.Remove(scriptsDir)
+	if err := os.WriteFile(scriptsDir, []byte("not a dir"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	env := &Env{
+		Root:      root,
+		Doer:      &fakeDoer{},
+		Now:       time.Now(),
+		PagesBase: "https://test.github.io/test",
+	}
+
+	code := `// ==UserScript==
+// @name        测试脚本
+// @version     1.0.0
+// @match       *://*/*
+// @grant       none
+// ==/UserScript==`
+
+	_, err := Execute("add", env, "", []string{code})
+	if err == nil {
+		t.Fatal("add 写入失败应返回 error")
+	}
+	if !strings.Contains(err.Error(), "写入脚本文件失败") {
+		t.Errorf("错误信息应含 '写入脚本文件失败': %v", err)
+	}
+}
+
+// TestFetchSourceNullResult 测试 fetchSource 返回空结果。
+func TestFetchSourceNullResult(t *testing.T) {
+	root := t.TempDir()
+	reg := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{}}
+	if err := reg.Save(filepath.Join(root, "registry.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	// fakeDoer 返回空 body
+	env := &Env{
+		Root: root,
+		Doer: &fakeDoer{resp: &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(""))}},
+		Now:  time.Now(),
+	}
+
+	_, err := fetchSource(env, "https://greasyfork.org/scripts/12345")
+	if err == nil {
+		t.Fatal("fetchSource 空结果应返回 error")
+	}
+	// 验证错误信息包含抓取失败的提示
+	if !strings.Contains(err.Error(), "抓取来源失败") {
+		t.Errorf("错误信息应含 '抓取来源失败': %v", err)
 	}
 }
