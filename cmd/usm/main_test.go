@@ -212,6 +212,16 @@ func TestBuildRunWithNoPagesBase(t *testing.T) {
 	}
 }
 
+func TestBuildRunWithPagesBaseSuccess(t *testing.T) {
+	root := buildTestRegistryDir(t)
+	os.Setenv("PAGES_BASE", "https://test.github.io/repo")
+	defer os.Unsetenv("PAGES_BASE")
+	code := buildRun([]string{"--root", root})
+	if code != 0 {
+		t.Errorf("build 带 PagesBase 应返回 0, got %d", code)
+	}
+}
+
 func TestRunSnapshotCheck(t *testing.T) {
 	// 验证 snapshot check 路径（可能因语料文件不可达而 skip，但不会 panic）
 	code := run([]string{"snapshot", "check"})
@@ -529,9 +539,15 @@ func TestRunCommandWithAuthorNamespace(t *testing.T) {
 
 func TestBuildSnapshotFiles(t *testing.T) {
 	// buildSnapshotFiles 加载 tests/corpus/inputs/registry.json（相对路径，需从模块根目录运行）
-	// 若语料文件不可达则跳过（CI 环境可能不同）
-	if _, err := os.Stat("tests/corpus/inputs/registry.json"); err != nil {
+	corpusPath := filepath.Join("..", "..", "tests", "corpus", "inputs", "registry.json")
+	if _, err := os.Stat(corpusPath); err != nil {
 		t.Skipf("语料文件不可达，跳过: %v", err)
+	}
+	// 切换到模块根目录（cmd/usm → ../..）以匹配相对路径
+	origWd, _ := os.Getwd()
+	defer os.Chdir(origWd)
+	if err := os.Chdir(filepath.Join("..", "..")); err != nil {
+		t.Skipf("无法切换到模块根目录，跳过: %v", err)
 	}
 	files, err := buildSnapshotFiles()
 	if err != nil {

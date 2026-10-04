@@ -486,6 +486,48 @@ func TestInfoByID(t *testing.T) {
 	}
 }
 
+// TestAddFromURLDeletedRecover 测试复活已软删除的脚本（I-4 契约）。
+func TestAddFromURLDeletedRecover(t *testing.T) {
+	env, _ := buildTestEnvWithFake(t)
+
+	// 在 registry 中手动添加一个已删除的 synced 脚本
+	reg, _ := loadReg(env)
+	reg.Add(registry.Script{
+		ID:          "del01",
+		Type:        registry.TypeSynced,
+		Name:        "被删脚本",
+		Version:     "1.0.0",
+		Enabled:     false,
+		Deleted:     true,
+		SourceURL:   stringPtr("https://recover.com/s.js"),
+		CreatedAt:   "2026-01-01T00:00:00Z",
+		UpdatedAt:   "2026-01-01T00:00:00Z",
+		SyncEnabled: boolPtr(true),
+	})
+	saveReg(env, reg)
+
+	sourceCode := `// ==UserScript==
+// @name        被删脚本
+// @version     1.0.0
+// @match       *://recover.com/*
+// @grant       none
+// ==/UserScript==`
+	resp := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(sourceCode)),
+		Header:     http.Header{},
+	}
+	env.Doer.(*fakeDoer).resp = resp
+
+	res, err := Execute("add", env, "https://recover.com/s.js", nil)
+	if err != nil {
+		t.Fatalf("复活应不返回 error: %v", err)
+	}
+	if !strings.Contains(res.Text, "已复活") {
+		t.Errorf("复活路径未触发: %s", res.Text)
+	}
+}
+
 // TestInfoByName 测试按名称查询。
 func TestInfoByName(t *testing.T) {
 	env, _ := buildTestEnvWithFake(t)
