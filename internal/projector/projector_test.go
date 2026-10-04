@@ -30,9 +30,9 @@ func (f *fakeGHDoer) Do(req *http.Request) (*http.Response, error) {
 
 // multiRespDoer 按调用序返回预置响应。
 type multiRespDoer struct {
-	t       *testing.T
-	resps   []string
-	calls   int
+	t         *testing.T
+	resps     []string
+	calls     int
 	lastQuery string
 }
 

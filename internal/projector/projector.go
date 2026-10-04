@@ -21,12 +21,12 @@ type Env struct {
 
 // Result 投影结果统计。
 type Result struct {
-	Active   int
-	Deleted  int
-	NoIssue  int
-	Created  int
-	Updated  int
-	Errors   int
+	Active  int
+	Deleted int
+	NoIssue int
+	Created int
+	Updated int
+	Errors  int
 }
 
 // Project 对账投影：遍历 registry，确保每个活跃脚本有关联的 Issue。

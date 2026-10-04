@@ -113,8 +113,8 @@ func TestMergeArchiveKeep(t *testing.T) {
 
 func TestParseCommand(t *testing.T) {
 	tests := []struct {
-		body   string
-		want   string
+		body string
+		want string
 	}{
 		{"/add https://example.com", "add"},
 		{"/list --filter active", "list"},

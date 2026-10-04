@@ -40,15 +40,15 @@ const registryFileName = "registry.json"
 type Env struct {
 	Root            string // 数据根（含 registry.json）
 	RepoOwner       string
-	RepoName        string       // 仓库名，格式 owner/repo；用于 GitHub API
+	RepoName        string // 仓库名，格式 owner/repo；用于 GitHub API
 	CommentUser     string
 	IssueNumber     int
 	PagesBase       string // https://<owner>.github.io/<repo> —— downloadURL/updateURL 前缀
-	AuthorName      string   // 自写脚本头默认作者
-	AuthorNamespace string   // 自写脚本头默认命名空间
+	AuthorName      string // 自写脚本头默认作者
+	AuthorNamespace string // 自写脚本头默认命名空间
 	Doer            sources.Doer
 	GHClient        *github.Client // GitHub GraphQL 客户端；nil → 跳过 GitHub 操作
-	Now             time.Time    // I-7 可注入；零值 → time.Now()
+	Now             time.Time      // I-7 可注入；零值 → time.Now()
 }
 
 // Result 回帖结果。

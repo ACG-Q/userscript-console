@@ -32,8 +32,8 @@ func (f *fakeDoer) Do(req *http.Request) (*http.Response, error) {
 
 type nopCloser struct{}
 
-func (nopCloser) Read(p []byte) (n int, err error)   { return 0, io.EOF }
-func (nopCloser) Close() error                        { return nil }
+func (nopCloser) Read(p []byte) (n int, err error) { return 0, io.EOF }
+func (nopCloser) Close() error                     { return nil }
 
 // buildTestEnvWithFake 构造带 fake Doer 的测试 Env。
 func buildTestEnvWithFake(t *testing.T) (*Env, string) {
@@ -546,7 +546,7 @@ func TestAddSelfScriptWriteError(t *testing.T) {
 	root := t.TempDir()
 	// 创建一个 registry
 	reg := &registry.Registry{
-		Schema: registry.SchemaVersion,
+		Schema:  registry.SchemaVersion,
 		Scripts: []registry.Script{},
 	}
 	if err := reg.Save(filepath.Join(root, "registry.json")); err != nil {

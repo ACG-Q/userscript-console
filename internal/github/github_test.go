@@ -734,7 +734,7 @@ func TestGetIssueNullReturn(t *testing.T) {
 
 func TestDiscussionCommentsEndCursorEmpty(t *testing.T) {
 	node := map[string]any{
-		"id":       "D_1",
+		"id": "D_1",
 		"comments": map[string]any{
 			"pageInfo": map[string]any{"hasNextPage": true, "endCursor": ""},
 			"nodes":    []any{},
@@ -863,4 +863,3 @@ func TestListIssueCommentsSuccess(t *testing.T) {
 		t.Errorf("结果不符: %+v", comments)
 	}
 }
-

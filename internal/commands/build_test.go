@@ -36,9 +36,9 @@ func TestRunBuildMissingSource(t *testing.T) {
 	// 不创建脚本文件 → ReadSource 将失败
 
 	env := &Env{
-		Root:       root,
-		PagesBase:  "https://test.github.io/repo",
-		Now:        time.Now(),
+		Root:      root,
+		PagesBase: "https://test.github.io/repo",
+		Now:       time.Now(),
 	}
 	res, err := runBuild(env, "", nil)
 	if err != nil {
@@ -56,9 +56,9 @@ func TestRunBuildEmptyRegistry(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := &Env{
-		Root:       root,
-		PagesBase:  "https://test.github.io/repo",
-		Now:        time.Now(),
+		Root:      root,
+		PagesBase: "https://test.github.io/repo",
+		Now:       time.Now(),
 	}
 	res, err := runBuild(env, "", nil)
 	if err != nil {
