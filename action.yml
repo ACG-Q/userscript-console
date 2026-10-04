@@ -5,9 +5,19 @@ branding:
   color: green
 
 # ── 版本策略（SPEC-ACTION §5） ────────────────────────────────
-# v0（默认）: 源码模式 —— setup-go + go run ./cmd/usm（无 Python，DR-6 从零搭建）。
-# v1: 下载 release 二进制 + sha256 校验（use-binary=true，C4-1/C4-2），
-#      inputs/outputs 一字不改。
+#
+# 两种执行模式，由 use-binary 切换：
+#   false（默认）: 源码模式 —— setup-go + go run ./cmd/usm
+#                   始终跟随本 commit 的源码，改代码即生效，无需发版。
+#   true: 二进制模式 —— 从 release 下载 usm-linux-amd64 + sha256 校验。
+#          更快（免编译），但版本由 binary-version 决定，与本 commit 无关。
+#
+# 二进制版本与校验和**由调用方显式传入**（inputs），不从本文件读取：
+#   原因：版本号只有打完 tag 才知道，若让 release CI 回填本文件，
+#   就会形成「tag → 回填 → 再发布」的循环依赖（v1.0.1 实测卡死在
+#   「写回 action.yml」这一步）。改为调用方声明后，release 退化为
+#   纯发布，永不回填本文件。
+#
 # 调用方一律 pin commit-sha：uses: acg-q/userscript-console@<40位sha>
 # 外部调用方可使用 v1 tag：uses: acg-q/userscript-console@v1
 
@@ -40,23 +50,18 @@ inputs:
     description: '仅 cleanup：必须显式 true 才真正删除（默认 dry-run）'
     default: 'false'
   version:
-    description: 'v1 二进制版本覆盖（留空=用 binary-version 自动回填值；仅自测用）'
+    description: '二进制版本别名（等价于 binary-version，保留以兼容早期调用方）'
     default: ''
-  use-binary:
-    description: 'true=下载并校验 release 二进制（v1）；false=源码模式 go run（v0，默认）'
-    default: 'false'
 
-  # ⚠️ 以下两个是**内部常量**，不是给调用方填的 input。
-  # GitHub Action 元数据不认顶层 `env:`（会被静默忽略，导致 ${{ env.X }} 展开为空），
-  # 所以只能借 inputs.default 承载，由 release CI 的 publish job 自动写回。
-  # 改这两个值请打 tag 走 Release workflow，勿手动编辑。
-  # 当前值来自 v1.0.0 release（sha256 与 checksums.txt 交叉核对一致）。
+  use-binary:
+    description: 'true=下载 release 二进制（需同时给 binary-version/binary-sha256）；false=源码模式（默认）'
+    default: 'false'
   binary-version:
-    description: '内部：v1 二进制版本号（release CI 自动写回）'
-    default: '1.0.0'
+    description: '二进制版本号（不含 v），仅 use-binary=true 时必填。取自对应 release 的 tag，如 1.0.0'
+    default: ''
   binary-sha256:
-    description: '内部：v1 二进制 sha256（release CI 自动写回）'
-    default: 'aea858220d62584a2dff8c4f5702e00d67b185999e288e1ff7e8656924585ce4'
+    description: '二进制 sha256（64 位十六进制），仅 use-binary=true 时必填。取自 release 资产的 checksums.txt'
+    default: ''
 
 outputs:
   authorized:
@@ -75,23 +80,28 @@ outputs:
 runs:
   using: composite
   steps:
-    # ── v1：二进制模式（use-binary=true） ──────────────────────
+    # ── 二进制模式：下载 + 校验（use-binary=true） ──────────────
     - name: Fetch binary
       id: fetch
       if: ${{ inputs.use-binary == 'true' }}
       shell: bash
       env:
-        # 版本：显式 input 优先，否则用 release CI 写回的 binary-version
-        WANT_VERSION: ${{ inputs.version != '' && inputs.version || inputs.binary-version }}
+        # 版本：binary-version 为主，version 作为兼容别名
+        WANT_VERSION: ${{ inputs.binary-version != '' && inputs.binary-version || inputs.version }}
         WANT_SHA256: ${{ inputs.binary-sha256 }}
       run: |
         set -euo pipefail
         DEST="$RUNNER_TEMP/usm"
 
-        # 版本号自检：为空说明 inputs.default 没生效（GitHub 元数据不支持顶层 env，
-        # 常量必须走 inputs 承载；这里显式报错而非发出畸形 URL）
+        # 两个参数都是调用方责任 —— 缺失即报明确错误，
+        # 而不是发出畸形 URL 让 curl 报 404（难以定位）。
         if [ -z "$WANT_VERSION" ]; then
-          echo "::error::binary-version 为空 —— release CI 尚未回填或 action.yml 被改坏"
+          echo "::error::use-binary=true 时必须提供 binary-version（如 1.0.0）"
+          exit 1
+        fi
+        if ! printf '%s' "$WANT_SHA256" | grep -Eq '^[0-9a-f]{64}$'; then
+          echo "::error::use-binary=true 时必须提供 binary-sha256（64 位十六进制，取自 release 的 checksums.txt）"
+          echo "::error::当前值='$WANT_SHA256'"
           exit 1
         fi
 
@@ -99,26 +109,19 @@ runs:
         echo "下载: $URL"
         curl -fsSL --retry 3 --retry-delay 2 -o "$DEST" "$URL"
 
-        # sha256 校验（供应链防线，R6）。占位值说明 release 尚未回填 → 直接失败，
-        # 避免「校验了个 0」这种假安全感。
-        case "$WANT_SHA256" in
-          ''|0000000000000000000000000000000000000000000000000000000000000000)
-            echo "::error::USM_BINARY_SHA256 仍为占位值，无法校验二进制（请先跑一次 Release workflow）"
-            exit 1
-            ;;
-        esac
         ACTUAL=$(sha256sum "$DEST" | awk '{print $1}')
         if [ "$ACTUAL" != "$WANT_SHA256" ]; then
           echo "::error::二进制 SHA256 不匹配（期望=$WANT_SHA256 实际=$ACTUAL）"
+          echo "::error::若刚发了新版本，请从 release 资产的 checksums.txt 更新 binary-sha256"
           exit 1
         fi
         echo "SHA256 校验通过: $ACTUAL"
 
         chmod +x "$DEST"
-        "$DEST" version
+        "$DEST" version          # 冒烟：能自报版本
         echo "path=$DEST" >> "$GITHUB_OUTPUT"
 
-    # ── v0：源码模式（默认） ────────────────────────────────────
+    # ── 源码模式：跟随本 commit（use-binary=false，默认） ───────
     - name: Setup Go
       if: ${{ inputs.use-binary != 'true' }}
       uses: actions/setup-go@v6
@@ -141,7 +144,7 @@ runs:
         USM_KEEP: ${{ inputs.keep }}
         USM_APPLY: ${{ inputs.apply }}
         USM_ROOT: ${{ github.workspace }}
-        # v1 走预下载二进制；v0 走源码
+        # 二进制模式下由 Fetch 步骤产出；源码模式为空
         USM_BIN: ${{ steps.fetch.outputs.path }}
       run: |
         set -euo pipefail
@@ -163,29 +166,29 @@ runs:
           *) echo "未知 command: ${{ inputs.command }}" >&2; exit 2 ;;
         esac
 
+        # 两种模式都必须输出合法 JSON —— action.yml 用 jq 解析它。
+        # 契约由 cmd/usm/json_output_test.go 锁定。
         rc=0
         if [ -n "$USM_BIN" ]; then
-          # v1：预下载二进制（已 sha256 校验）
           "$USM_BIN" "${CMD[@]}" --json > usm-out.json || rc=$?
         else
-          # v0：源码模式
           ( cd "$USM_ACTION_PATH" && go run ./cmd/usm "${CMD[@]}" --json ) > usm-out.json || rc=$?
         fi
 
-        # 始终解析已有输出（失败也要把 result 回传给调用方，便于失败回帖）
+        # 输出块：先校验 JSON 合法性，非法就立刻报错，
+        # 绝不让脏数据流进 $GITHUB_OUTPUT（否则 heredoc 解析会连带失败）。
         if [ -s usm-out.json ]; then
-          # heredoc 分隔符必须开闭一致：只求值一次并复用（EOF_ID）。
-          #
-          # 写法上从「共用一个 { } 块」改为「每个字段单独 append」，
-          # 并用 printf 代替 echo —— printf 不解释反斜杠序列，
-          # 而 result 常含 Windows 路径与 markdown 转义。
-          # 注：这一步是防御性收敛，尚无证据表明它就是本次
-          # "Matching delimiter not found" 的根因；真正的确诊手段是
-          # 下方失败分支打印的 `cat -A` 原始字节。
+          if ! jq -e . usm-out.json >/dev/null 2>&1; then
+            echo "::error::usm 输出非法 JSON：" >&2
+            cat usm-out.json >&2
+            exit 6
+          fi
+
+          # heredoc 分隔符只求值一次并复用；每字段单独 append。
           EOF_ID="USM_EOF_$(date +%s%N)"
 
           printf 'changed=%s\n'    "$(jq -r '.changed // false'  usm-out.json)" >> "$GITHUB_OUTPUT"
-          printf 'authorized=%s\n' "$(jq -r '.authorized // true'  usm-out.json)" >> "$GITHUB_OUTPUT"
+          printf 'authorized=%s\n' "$(jq -r '.authorized // true' usm-out.json)" >> "$GITHUB_OUTPUT"
 
           {
             printf 'warnings<<%s\n' "$EOF_ID"
@@ -202,14 +205,8 @@ runs:
 
         if [ "$rc" -ne 0 ]; then
           echo "usm 退出码 $rc" >&2
-          # 诊断：失败时打印原始 JSON 与已写入的 output 字节（cat -A 显示行尾）。
-          # 下次再出现 "Matching delimiter not found" 时，可直接肉眼比对。
+          [ -s usm-out.json ] && jq -r 'if .errors then (.errors[] | "ERROR: \(.)") else empty end' usm-out.json >&2 || true
           echo "--- usm-out.json ---" >&2
           cat usm-out.json >&2
-          echo >&2
-          [ -f usm-out.json ] && echo "--- GITHUB_OUTPUT (cat -A) ---" >&2
-          [ -f usm-out.json ] && cat -A "$GITHUB_OUTPUT" >&2
-          echo >&2
-          [ -s usm-out.json ] && jq -r 'if .errors then (.errors[] | "ERROR: \(.)") else empty end' usm-out.json >&2 || true
           exit "$rc"
         fi

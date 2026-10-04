@@ -1,14 +1,15 @@
 package main
 
-// 本文件锁定 action.yml 的 release 契约：
-//   1. inputs/outputs 对调用方的既有接口不可变（SPEC-ACTION §5）
-//   2. v1 二进制常量必须走 inputs.default 承载，**不能用顶层 env**
-//      （GitHub Action 元数据不认顶层 env:，会静默忽略 → 展开为空串）
-//   3. 写回正则必须命中且幂等（release 重跑不产生空 diff）
-//   4. 占位 SHA256（全 0）必须被拒绝（防止「校验了个 0」的假安全感）
-//   5. $GITHUB_OUTPUT heredoc 分隔符开闭一致（见 gha_output_test.go）
+// 本文件锁定 action.yml 的对外契约。
 //
-// 这些断言直接读仓库里的 action.yml —— 改坏 CI 会红，改 action.yml 破坏契约也会红。
+// 设计背景（v1.0.0 → v1.0.1 的教训）：
+//   action.yml 曾试图内置「当前二进制版本 + sha256」，由 release CI 回填。
+//   结果 release 卡死在「写回 action.yml」——版本号只有打完 tag 才知道，
+//   tag 又由 release workflow 处理，形成循环依赖；且写回的正则还需跨过
+//   description 行，漏了就静默 exit 1。
+//
+// 现在改为：**action.yml 不存任何版本常量**，binary-version / binary-sha256
+// 由调用方在 workflow 里显式声明，默认为空。本文件锁死这个新契约。
 
 import (
 	"os"
@@ -19,6 +20,15 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
+
+func loadActionRawForTest(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "action.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
 
 type actionYAML struct {
 	Name    string                            `yaml:"name"`
@@ -50,7 +60,7 @@ func loadActionYAML(t *testing.T) (*actionYAML, string) {
 	return &doc, string(raw)
 }
 
-// TestActionContractInterfaceFrozen 接口不可变：这是 C4-2 的核心约束。
+// TestActionContractInterfaceFrozen 对调用方的既有接口不可变（SPEC-ACTION §5）。
 func TestActionContractInterfaceFrozen(t *testing.T) {
 	doc, _ := loadActionYAML(t)
 
@@ -58,6 +68,7 @@ func TestActionContractInterfaceFrozen(t *testing.T) {
 		"command", "github-token", "comment-body", "comment-user",
 		"repo-owner", "issue-number", "registry-schema-version",
 		"keep", "apply", "version", "use-binary",
+		"binary-version", "binary-sha256",
 	}
 	for _, name := range requiredInputs {
 		if _, ok := doc.Inputs[name]; !ok {
@@ -73,15 +84,11 @@ func TestActionContractInterfaceFrozen(t *testing.T) {
 	}
 }
 
-// TestActionNoTopLevelEnv 是本次真实 CI 故障的回归锁。
+// TestActionNoTopLevelEnv 是真实 CI 故障的回归锁。
 //
-// 现象：v1 二进制模式下 curl 报 exit 22（HTTP 404），step 秒级失败。
-// 根因：action.yml 把 USM_BINARY_VERSION / USM_BINARY_SHA256 放在**顶层
-// `env:`**，而 GitHub Action 元数据只认 name/description/branding/inputs/
-// outputs/runs —— 顶层 env: 被静默忽略，`${{ env.X }}` 展开为空串，
-// 下载 URL 变成 `.../download/v/usm-linux-amd64`（少了版本号）→ 404。
-//
-// 修复：常量改走 `inputs.<name>.default`。本测试确保它不会退回顶层 env。
+// GitHub Action 元数据只认 name/description/author/branding/inputs/outputs/runs。
+// 顶层 `env:` 会被**静默忽略** —— 不报错不警告，只是 ${{ env.X }} 展开为空串，
+// 曾导致下载 URL 变成 `.../download/v/usm-linux-amd64`（版本号消失）→ 404。
 func TestActionNoTopLevelEnv(t *testing.T) {
 	_, raw := loadActionYAML(t)
 
@@ -90,143 +97,129 @@ func TestActionNoTopLevelEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, ok := doc["env"]; ok {
-		t.Error("action.yml 顶层不应有 env: —— GitHub Action 元数据不认它，")
-		t.Error("      会静默忽略导致 ${{ env.X }} 展开为空。常量请走 inputs.<name>.default。")
+		t.Error("action.yml 顶层不应有 env: —— GitHub Action 元数据不认它，会静默忽略。")
 	}
 }
 
-// TestActionBinaryConstantsAreInputs release CI 写回的目标必须存在。
-func TestActionBinaryConstantsAreInputs(t *testing.T) {
+// TestActionBinaryInputsDefaultEmpty 关键：binary-version / binary-sha256
+// 的 default 必须为空 —— 版本由调用方声明，本文件不持有任何版本常量。
+//
+// 若哪天又有人想「让 release 回填」，这条会红：那会重新引入
+// 「tag → 回填 → 推分支 → tag 语义被污染」的循环依赖。
+func TestActionBinaryInputsDefaultEmpty(t *testing.T) {
 	doc, _ := loadActionYAML(t)
 
 	for _, name := range []string{"binary-version", "binary-sha256"} {
 		in, ok := doc.Inputs[name]
 		if !ok {
-			t.Errorf("缺少内部常量 input %q（release CI 需写回其 default）", name)
+			t.Errorf("缺少 input %q", name)
 			continue
 		}
-		if _, ok := in["default"]; !ok {
-			t.Errorf("input %q 缺 default（GitHub 展开 ${{ inputs.%s }} 依赖它）", name, name)
+		got, _ := in["default"].(string)
+		if got != "" {
+			t.Errorf("input %q 的 default 应为空（版本由调用方声明），实际 %q", name, got)
 		}
 	}
 }
 
-// 写回正则需容忍中间的 description 行（release.yml 用同一套模式）。
-// 实际形如：
-//
-//	binary-sha256:
-//	  description: '...'
-//	  default: 'xxx'
-var (
-	reSHADefault     = regexp.MustCompile(`(?s)(binary-sha256:.*?default:\s*')[^']*(')`)
-	reVersionDefault = regexp.MustCompile(`(?s)(binary-version:.*?default:\s*')[^']*(')`)
-)
-
-// TestActionWriteBackRegexMatches 复刻 release.yml publish job 的写回逻辑。
-func TestActionWriteBackRegexMatches(t *testing.T) {
-	_, raw := loadActionYAML(t)
-
-	const (
-		sha     = "aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffff0000000011111111"
-		version = "1.2.3"
-	)
-
-	out := reSHADefault.ReplaceAllString(raw, "${1}"+sha+"${2}")
-	out = reVersionDefault.ReplaceAllString(out, "${1}"+version+"${2}")
-
-	if out == raw {
-		t.Fatal("写回正则未命中 —— release.yml 会报「未找到 binary-sha256 / binary-version 的 default」")
-	}
-
-	var doc actionYAML
-	if err := yaml.Unmarshal([]byte(out), &doc); err != nil {
-		t.Fatalf("写回后 YAML 应仍合法: %v", err)
-	}
-	if got := doc.Inputs["binary-sha256"]["default"]; got != sha {
-		t.Errorf("写回后 binary-sha256.default = %v, want %s", got, sha)
-	}
-	if got := doc.Inputs["binary-version"]["default"]; got != version {
-		t.Errorf("写回后 binary-version.default = %v, want %s", got, version)
-	}
-
-	// 幂等：同值二次写回应无变化（release 重跑不产生空 diff 提交）
-	out2 := reSHADefault.ReplaceAllString(out, "${1}"+sha+"${2}")
-	out2 = reVersionDefault.ReplaceAllString(out2, "${1}"+version+"${2}")
-	if out2 != out {
-		t.Error("二次写回应幂等（release 重跑会因空 diff 提交失败）")
-	}
-}
-
-// TestActionRejectsPlaceholderSHA v1 模式必须拒绝占位 SHA256。
-func TestActionRejectsPlaceholderSHA(t *testing.T) {
+// TestActionFetchBinaryValidatesParams 二进制模式必须在下载前校验参数，
+// 缺失时报**明确错误**，而不是发出畸形 URL 让 curl 报 404。
+func TestActionFetchBinaryValidatesParams(t *testing.T) {
 	doc, _ := loadActionYAML(t)
-
-	const zeroSHA = "0000000000000000000000000000000000000000000000000000000000000000"
-	current, _ := doc.Inputs["binary-sha256"]["default"].(string)
-	if current != zeroSHA {
-		t.Skip("binary-sha256 已被 release 回填，跳过占位值检查")
-	}
 
 	var fetchStep string
 	for _, s := range doc.Runs.Steps {
-		if strings.Contains(s.Name, "Fetch") || strings.Contains(s.Name, "binary") {
+		if strings.Contains(s.Name, "Fetch") {
 			fetchStep = s.Run
 			break
 		}
 	}
 	if fetchStep == "" {
-		t.Fatal("找不到 Fetch binary 步骤（v1 模式未实现？）")
+		t.Fatal("找不到 Fetch binary 步骤（v1 二进制模式未实现？）")
 	}
-	if !strings.Contains(fetchStep, zeroSHA) {
-		t.Error("Fetch binary 未识别全 0 占位 SHA —— 会「校验了个 0」形成假安全感")
+
+	if !strings.Contains(fetchStep, `if [ -z "$WANT_VERSION" ]`) {
+		t.Error("应显式检查 WANT_VERSION 为空并报错")
 	}
-	if !strings.Contains(fetchStep, "exit 1") {
-		t.Error("占位 SHA256 应直接 exit 1，不应继续下载校验")
+	if !strings.Contains(fetchStep, "binary-sha256") || !strings.Contains(fetchStep, "64") {
+		t.Error("应校验 WANT_SHA256 为 64 位十六进制")
+	}
+	// 两个失败分支都要 exit 1
+	if strings.Count(fetchStep, "exit 1") < 3 {
+		t.Errorf("应有 3 处 exit 1（版本空 / sha 格式错 / sha 不匹配），实际 %d",
+			strings.Count(fetchStep, "exit 1"))
+	}
+	// sha 不匹配时应提示去 checksums.txt 查新值
+	if !strings.Contains(fetchStep, "checksums.txt") {
+		t.Error("sha 不匹配时应提示从 release 的 checksums.txt 取新值")
 	}
 }
 
-// TestActionFetchBinaryRejectsEmptyVersion 版本号为空必须显式报错，
-// 而不是发出 `.../download/v/usm-linux-amd64` 这种畸形 URL 让 curl 报 404。
-func TestActionFetchBinaryRejectsEmptyVersion(t *testing.T) {
+// TestActionFetchBinaryEnvSources Fetch 步骤的 env 必须来自 inputs，
+// 不能来自顶层 env（后者不被识别）。
+func TestActionFetchBinaryEnvSources(t *testing.T) {
 	doc, _ := loadActionYAML(t)
 
-	var fetchRun string
-	for _, s := range doc.Runs.Steps {
-		if strings.Contains(s.Name, "Fetch") || strings.Contains(s.Name, "binary") {
-			fetchRun = s.Run
-			break
-		}
-	}
-	if fetchRun == "" {
-		t.Fatal("找不到 Fetch binary 步骤")
-	}
-	if !strings.Contains(fetchRun, `if [ -z "$WANT_VERSION" ]`) {
-		t.Error("Fetch binary 应显式检查 WANT_VERSION 为空并报错")
-	}
-	if !strings.Contains(fetchRun, "exit 1") {
-		t.Error("WANT_VERSION 为空时应 exit 1")
-	}
-	// env 块里必须从 inputs.binary-version 取值（不是顶层 env）
 	found := false
 	for _, s := range doc.Runs.Steps {
-		if s.Env["WANT_VERSION"] != "" && strings.Contains(s.Env["WANT_VERSION"], "inputs.binary-version") {
-			found = true
+		if !strings.Contains(s.Name, "Fetch") {
+			continue
 		}
-		if s.Env["WANT_SHA256"] != "" && strings.Contains(s.Env["WANT_SHA256"], "inputs.binary-sha256") {
-			found = found || true
+		for _, key := range []string{"WANT_VERSION", "WANT_SHA256"} {
+			if strings.Contains(s.Env[key], "inputs.") {
+				found = true
+			} else {
+				t.Errorf("Fetch 步骤的 %s 应来自 inputs.*，实际 %q", key, s.Env[key])
+			}
 		}
 	}
 	if !found {
-		t.Error("Fetch binary 的 env 应从 inputs.binary-version / inputs.binary-sha256 取值")
+		t.Error("Fetch 步骤未从 inputs 读取版本与校验和")
+	}
+}
+
+// TestActionValidatesJSONBeforeOutput 输出前必须先校验 usm 输出的 JSON 合法性。
+//
+// 真实事故：build/project/cleanup 未实现 --json，输出人类可读文本，
+// jq 解析失败 → $GITHUB_OUTPUT 的 heredoc 写入不完整 →
+// GitHub 报 "Matching delimiter not found" + exit 5。
+//
+// 契约本身由 json_output_test.go 锁定；这里锁「action 侧要有防线」。
+func TestActionValidatesJSONBeforeOutput(t *testing.T) {
+	doc, _ := loadActionYAML(t)
+
+	var runStep string
+	for _, s := range doc.Runs.Steps {
+		if s.Name == "Run" {
+			runStep = s.Run
+		}
+	}
+	if runStep == "" {
+		t.Fatal("找不到 Run 步骤")
+	}
+
+	if !strings.Contains(runStep, "jq -e . usm-out.json") {
+		t.Error("Run 步骤应在写 $GITHUB_OUTPUT 前用 jq 校验 JSON 合法性")
+	}
+	if !strings.Contains(runStep, "exit 6") {
+		t.Error("JSON 非法应以专用退出码（6）退出，便于与业务错误区分")
+	}
+
+	// heredoc 分隔符必须复用同一变量
+	if !strings.Contains(runStep, `EOF_ID="USM_EOF_$(date +%s%N)"`) {
+		t.Error("heredoc 分隔符应只求值一次（共享 EOF_ID）")
+	}
+	if strings.Contains(runStep, "<<USM_EOF_") {
+		t.Error("heredoc 分隔符不应内联自求值（跨秒会失配）")
 	}
 }
 
 // TestActionNoSelfEvaluatingHeredoc 分隔符自求值（<<$(date...)）跨秒会失配。
 func TestActionNoSelfEvaluatingHeredoc(t *testing.T) {
-	_, raw := loadActionYAML(t)
+	raw := loadActionRawForTest(t)
 
 	if m := regexp.MustCompile(`<<\S*\$\(`).FindAllString(raw, -1); len(m) > 0 {
-		t.Errorf("仍有自求值 heredoc 分隔符（跨秒产生不同值 → Matching delimiter not found）: %v", m)
+		t.Errorf("仍有自求值 heredoc 分隔符: %v", m)
 	}
 }
 
@@ -247,5 +240,29 @@ func TestActionPAGESBaseDerivation(t *testing.T) {
 
 	if !strings.Contains(runBody, `PAGES_BASE:=https://${GITHUB_REPOSITORY/\//-}.github.io`) {
 		t.Error("PAGES_BASE 推导写法不符（应为 bash 原生参数替换，无 $(echo) 包裹）")
+	}
+}
+
+// TestActionCommandWhitelist 子命令必须走白名单 case，未知值 exit 2。
+func TestActionCommandWhitelist(t *testing.T) {
+	doc, _ := loadActionYAML(t)
+
+	var runBody string
+	for _, s := range doc.Runs.Steps {
+		if s.Name == "Run" {
+			runBody = s.Run
+		}
+	}
+	if runBody == "" {
+		t.Fatal("找不到 Run 步骤")
+	}
+
+	for _, cmd := range []string{"run-command", "project", "build", "cleanup", "doctor"} {
+		if !strings.Contains(runBody, cmd+")") {
+			t.Errorf("子命令白名单缺 %s", cmd)
+		}
+	}
+	if !strings.Contains(runBody, "exit 2") {
+		t.Error("未知子命令应 exit 2")
 	}
 }
