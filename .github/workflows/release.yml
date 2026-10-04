@@ -28,9 +28,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # 供所有 job 复用：去掉 v 前缀的纯版本号
+  # 供所有 job 复用。workflow_dispatch 时用 inputs.tag，否则用触发 ref 的 tag 名。
+  # 注意：GitHub Actions 表达式没有 replace()，去 v 前缀在各 job 的 shell 里做
+  # （见「去 v 前缀」步骤），此处保留原始值。
   USM_VERSION: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
-  USM_VERSION_NO_V: ${{ (inputs.tag != '' && inputs.tag || github.ref_name) }}
 
 jobs:
   # ── 1. 编译矩阵（并发安全） ────────────────────────────────────
@@ -56,12 +57,27 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: 去 v 前缀
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          RAW="${{ env.USM_VERSION }}"
+          # 校验 tag 形如 vX.Y.Z（防止误打 vfoo 之类）
+          if ! printf '%s' "$RAW" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::tag 形如 vX.Y.Z，当前=$RAW"
+            exit 1
+          fi
+          NO_V="${RAW#v}"
+          echo "raw=$RAW" >> "$GITHUB_OUTPUT"
+          echo "no_v=$NO_V" >> "$GITHUB_OUTPUT"
+
       - name: 编译
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
-          VERSION: ${{ env.USM_VERSION_NO_V }}
+          VERSION: ${{ steps.ver.outputs.no_v }}
         run: |
           set -euo pipefail
           NAME="usm-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}"
@@ -97,6 +113,20 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: 去 v 前缀
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          RAW="${{ env.USM_VERSION }}"
+          # 校验 tag 形如 vX.Y.Z（防止误打 vfoo 之类导致 release URL 错乱）
+          if ! printf '%s' "$RAW" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::tag 必须形如 vX.Y.Z，当前=$RAW"
+            exit 1
+          fi
+          echo "raw=$RAW" >> "$GITHUB_OUTPUT"
+          echo "no_v=${RAW#v}" >> "$GITHUB_OUTPUT"
+
       - name: 收集所有平台产物
         uses: actions/download-artifact@v4
         with:
@@ -128,7 +158,7 @@ jobs:
 
       - name: 写回 action.yml（版本 + SHA256，C4-1/C4-2）
         env:
-          VERSION: ${{ env.USM_VERSION_NO_V }}
+          VERSION: ${{ steps.ver.outputs.no_v }}
         run: |
           set -euo pipefail
           SHA=$(grep 'usm-linux-amd64$' dist/checksums.txt | awk '{print $1}')
@@ -157,17 +187,25 @@ jobs:
           fi
           git --no-pager diff -- action.yml
 
-      - name: 提交并推送 action.yml（回填）
+      - name: 提交并推送 action.yml（回填到默认分支）
         env:
-          VERSION: ${{ env.USM_VERSION }}
+          TAG: ${{ env.USM_VERSION }}
+          VERSION: ${{ steps.ver.outputs.no_v }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add action.yml
           git commit -m "chore(release): 回填 ${VERSION} 的二进制版本与 SHA256 (C4-1/C4-2)"
-          # tag 已存在，用 push 到当前分支即可；force-with-lease 避免覆盖他人提交
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+          # ⚠️ 必须推回**默认分支**，不能推 tag：
+          # tag 由本次 run 创建且已存在，推 HEAD:refs/tags/<tag> 会被
+          # 远端拒绝（"already exists"），release 步骤随之失败。
+          # 语义上也更合理 —— tag 应冻结在「产物对应的那个提交」，
+          # 回填是发布之后的补充变更，移到默认分支上。
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+          git push origin "HEAD:${DEFAULT_BRANCH}"
+          echo "已回填到 ${DEFAULT_BRANCH}（tag ${TAG} 保持冻结）"
 
       - name: 发布 release
         env:

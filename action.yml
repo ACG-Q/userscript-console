@@ -11,7 +11,8 @@ branding:
 # 调用方一律 pin commit-sha：uses: acg-q/userscript-console@<40位sha>
 # 外部调用方可使用 v1 tag：uses: acg-q/userscript-console@v1
 env:
-  # 由 .github/workflows/release.yml 的 publish job 自动写入，勿手动修改
+  # 由 .github/workflows/release.yml 的 publish job 自动写入，勿手动修改。
+  # 二进制名固定 usm-linux-amd64，tag 为 v<USM_BINARY_VERSION>。
   USM_BINARY_VERSION: '0.0.0'
   USM_BINARY_SHA256: '0000000000000000000000000000000000000000000000000000000000000000'
 
