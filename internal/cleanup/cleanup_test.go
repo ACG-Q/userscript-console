@@ -109,3 +109,23 @@ func TestMergeArchiveKeep(t *testing.T) {
 		t.Errorf("Keep=2 时应保留 2 条，实际: %d", len(addCmd.Results))
 	}
 }
+
+func TestParseCommand(t *testing.T) {
+	tests := []struct {
+		body   string
+		want   string
+	}{
+		{"/add https://example.com", "add"},
+		{"/list --filter active", "list"},
+		{"/rm s1", "rm"},
+		{"hello world", "unknown"},
+		{"", "unknown"},
+		{"/info", "info"},
+	}
+	for _, tt := range tests {
+		got := ParseCommand(tt.body)
+		if got != tt.want {
+			t.Errorf("ParseCommand(%q) = %q, want %q", tt.body, got, tt.want)
+		}
+	}
+}

@@ -215,8 +215,8 @@ func TestCleanupWithApply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cleanup --apply 不应返回 error: %v", err)
 	}
-	if !strings.Contains(res.Text, "已清理") && !strings.Contains(res.Text, "dry-run") {
-		t.Errorf("cleanup --apply 应有清理消息: %s", res.Text)
+	if !strings.Contains(res.Text, "cleanup 完成") {
+		t.Errorf("cleanup --apply 应有清理完成消息: %s", res.Text)
 	}
 }
 

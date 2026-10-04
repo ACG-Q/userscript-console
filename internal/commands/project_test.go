@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/acg-q/userscript-console/internal/cleanup"
 	"github.com/acg-q/userscript-console/internal/github"
 	"github.com/acg-q/userscript-console/internal/registry"
 )
@@ -103,21 +104,21 @@ func TestRunProjectCreateIssue(t *testing.T) {
 func TestSaveArchive(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "archive", "commands.json")
-	arch := &archive{
+	arch := &cleanup.Archive{
 		Schema: 1,
-		Commands: []commandItem{
-			{Command: "add", Author: "u1", CreatedAt: "2026-01-01T00:00:00Z",
-				Results: []resultItem{{ID: "r1", Author: "u1", Body: "/add url", CreatedAt: "2026-01-01T00:00:00Z"}}},
+		Commands: []cleanup.CommandKey{
+			{Command: "add", Author: "u1", CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+				Results: []cleanup.Result{{ID: "r1", Author: "u1", Body: "/add url", CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}}},
 		},
 	}
-	if err := saveArchive(path, arch); err != nil {
+	if err := cleanup.Save(path, arch); err != nil {
 		t.Fatalf("saveArchive 失败: %v", err)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("读取归档失败: %v", err)
 	}
-	var decoded archive
+	var decoded cleanup.Archive
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
@@ -140,7 +141,7 @@ func TestLoadArchive(t *testing.T) {
 	if err := os.WriteFile(path, []byte(payload), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	arch, err := loadArchive(path)
+	arch, err := cleanup.Load(path)
 	if err != nil {
 		t.Fatalf("loadArchive 失败: %v", err)
 	}
@@ -153,7 +154,7 @@ func TestLoadArchive(t *testing.T) {
 }
 
 func TestLoadArchiveNotExist(t *testing.T) {
-	_, err := loadArchive(filepath.Join(t.TempDir(), "nope.json"))
+	_, err := cleanup.Load(filepath.Join(t.TempDir(), "nope.json"))
 	if err == nil {
 		t.Fatal("loadArchive 不存在应返回 error")
 	}
@@ -165,7 +166,7 @@ func TestLoadArchiveBadJSON(t *testing.T) {
 	if err := os.WriteFile(path, []byte("not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := loadArchive(path)
+	_, err := cleanup.Load(path)
 	if err == nil {
 		t.Fatal("loadArchive 坏 JSON 应返回 error")
 	}

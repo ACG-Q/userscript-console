@@ -152,3 +152,6 @@ func parseCommand(body string) string {
 	}
 	return parts[0]
 }
+
+// ParseCommand 导出 parseCommand 供外部包使用。
+func ParseCommand(body string) string { return parseCommand(body) }
