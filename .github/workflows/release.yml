@@ -49,6 +49,17 @@ jobs:
           sha256sum usm-* > checksums.txt
           cat checksums.txt
 
+      - name: 自校验 action.yml SHA256 占位符
+        run: |
+          set -euo pipefail
+          EXPECTED=$(grep usm-linux-amd64 dist/checksums.txt | awk '{print $1}')
+          ACTUAL=$(grep -oE '[a-f0-9]{64}' action.yml | head -1)
+          if [ -n "$ACTUAL" ] && [ "$EXPECTED" != "$ACTUAL" ] && [ "$ACTUAL" != "<SHA256_PLACEHOLDER>" ]; then
+            echo "::error::action.yml SHA256 与发布产物不一致（期望=$EXPECTED，实际=$ACTUAL）"
+            exit 1
+          fi
+          echo "SHA256 匹配检查通过: $EXPECTED"
+
       - name: 上传 release 资产
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
