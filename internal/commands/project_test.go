@@ -81,6 +81,37 @@ func TestEnsureIssueNilGHClient(t *testing.T) {
 	}
 }
 
+// TestRunProjectTombstone 测试投影含已删除脚本（触发 tombstoneIssue）。
+func TestRunProjectTombstone(t *testing.T) {
+	respBody := `{"data":{"updateIssue":{"issue":{"id":"I_del","number":9,"title":"T","body":"B","state":"OPEN"}}}}`
+	ghc, err := github.New("tok", "o/r",
+		github.WithDoer(&fakeGHDoer{resp: respBody}),
+		github.WithRetry(0),
+	)
+	if err != nil {
+		t.Fatalf("创建 GHClient 失败: %v", err)
+	}
+	env, _ := buildTestEnvWithSource(t)
+	env.GHClient = ghc
+	env.RepoOwner = "o"
+	env.PagesBase = "https://test.github.io/repo"
+	reg, _ := loadReg(env)
+	for i := range reg.Scripts {
+		if reg.Scripts[i].ID == "del01" && reg.Scripts[i].Issue == nil {
+			reg.Scripts[i].Issue = &registry.IssueRef{Number: 9, NodeID: "I_del", URL: "https://gh.io/9"}
+		}
+	}
+	saveReg(env, reg)
+
+	res, err := Execute("project", env, "", nil)
+	if err != nil {
+		t.Fatalf("project 不应返回 error: %v", err)
+	}
+	if !strings.Contains(res.Text, "投影统计") {
+		t.Errorf("project 应输出统计: %s", res.Text)
+	}
+}
+
 // TestTombstoneIssueNilPanics 测试 tombstoneIssue 接受 nil ghc 会 panic。
 func TestTombstoneIssueNilPanics(t *testing.T) {
 	defer func() {

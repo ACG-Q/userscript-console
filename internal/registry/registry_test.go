@@ -276,3 +276,10 @@ func TestAdd(t *testing.T) {
 		t.Errorf("Add 失败: %+v", r.Scripts)
 	}
 }
+
+func TestLoadMissingFile(t *testing.T) {
+	_, err := Load(filepath.Join(t.TempDir(), "nope.json"))
+	if err == nil {
+		t.Fatal("Load 不存在文件应返回 error")
+	}
+}
