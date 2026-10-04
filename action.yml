@@ -13,8 +13,8 @@ branding:
 env:
   # 由 .github/workflows/release.yml 的 publish job 自动写入，勿手动修改。
   # 二进制名固定 usm-linux-amd64，tag 为 v<USM_BINARY_VERSION>。
-  USM_BINARY_VERSION: '0.0.0'
-  USM_BINARY_SHA256: '0000000000000000000000000000000000000000000000000000000000000000'
+  USM_BINARY_VERSION: '1.0.0'
+  USM_BINARY_SHA256: 'aea858220d62584a2dff8c4f5702e00d67b185999e288e1ff7e8656924585ce4'
 
 inputs:
   command:
