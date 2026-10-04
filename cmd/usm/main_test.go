@@ -15,6 +15,18 @@ func TestRunVersion(t *testing.T) {
 	}
 }
 
+func TestRunWithFlagVersion(t *testing.T) {
+	if code := run([]string{"-v"}); code != 0 {
+		t.Errorf("-v 应返回 0, got %d", code)
+	}
+}
+
+func TestRunWithLongVersion(t *testing.T) {
+	if code := run([]string{"--version"}); code != 0 {
+		t.Errorf("--version 应返回 0, got %d", code)
+	}
+}
+
 func TestRunHelp(t *testing.T) {
 	if code := run([]string{"help"}); code != 0 {
 		t.Errorf("help 应返回 0, got %d", code)
