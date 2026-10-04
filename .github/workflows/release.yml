@@ -1,87 +1,211 @@
 name: Release
 
-# C4-1：tag vX.Y.Z → 多平台二进制 + SHA256 + 移动 v1 大版本 tag。
-# v1 激活后（C4-2）补充：把 linux-amd64 的 sha256 写回 action.yml 内置常量并随 release 提交。
+# C4-1/C4-2/C4-3：tag vX.Y.Z → 跨平台二进制 + SHA256 → 写回 action.yml 内置校验和
+#                  → 发布 release → 移动 v1 大版本 tag。
+#
+# 设计要点：
+#   1. build matrix 只负责编译并上传 artifact（并发安全，无 release 竞争）
+#   2. publish 单 job 汇总所有平台 → 生成 checksums.txt → 写回 action.yml → 发布
+#   3. action.yml 的 USM_BINARY_SHA256 / USM_BINARY_VERSION 由本流程自动维护，
+#      调用方 inputs/outputs 一字不改（SPEC-ACTION §5）
+#   4. concurrency 防止同 tag 重跑互相覆盖
 
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（vX.Y.Z）'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # 供所有 job 复用：去掉 v 前缀的纯版本号
+  USM_VERSION: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+  USM_VERSION_NO_V: ${{ (inputs.tag != '' && inputs.tag || github.ref_name) }}
+
 jobs:
-  release:
+  # ── 1. 编译矩阵（并发安全） ────────────────────────────────────
+  build:
+    name: build ${{ matrix.goos }}-${{ matrix.goarch }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - { goos: linux, goarch: amd64 }
-          # D-07：先仅 Linux；需要时扩展矩阵
-          # - { goos: linux, goarch: arm64 }
-          # - { goos: windows, goarch: amd64 }
-          # - { goos: darwin, goarch: arm64 }
+          - { goos: linux,   goarch: amd64, suffix: '' }
+          - { goos: linux,   goarch: arm64, suffix: '' }
+          - { goos: windows, goarch: amd64, suffix: '.exe' }
+          - { goos: darwin,  goarch: arm64, suffix: '' }
+          - { goos: darwin,  goarch: amd64, suffix: '' }
     steps:
-      - uses: actions/checkout@v5   # TODO pin by sha
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # 需完整历史供 publish 侧 commit
 
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
-      - name: 构建
+      - name: 编译
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
+          VERSION: ${{ env.USM_VERSION_NO_V }}
         run: |
           set -euo pipefail
-          NAME="usm-${{ matrix.goos }}-${{ matrix.goarch }}"
-          if [ "${{ matrix.goos }}" = "windows" ]; then SUFFIX=".exe"; else SUFFIX=""; fi
+          NAME="usm-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}"
+          mkdir -p dist
           go build -trimpath \
-            -ldflags "-s -w -X main.version=${GITHUB_REF_NAME#v}" \
-            -o "dist/${NAME}${SUFFIX}" ./cmd/usm
+            -ldflags "-s -w -X main.version=${VERSION}" \
+            -o "dist/${NAME}" ./cmd/usm
+          # 冒烟：二进制能自报版本
+          if [ "${{ matrix.goos }}" = "linux" ] && [ "${{ matrix.goarch }}" = "amd64" ]; then
+            ./dist/"$NAME" version
+          fi
+          ls -l "dist/${NAME}"
 
-      - name: 校验和
+      - uses: actions/upload-artifact@v4
+        with:
+          name: usm-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/usm-*
+          retention-days: 1
+          if-no-files-found: error
+
+  # ── 2. 汇总 + 校验和 + 写回 action.yml + 发布 ──────────────────
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: 收集所有平台产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: usm-*
+          merge-multiple: true
+
+      - name: 生成 checksums.txt
         run: |
           set -euo pipefail
           cd dist
+          ls -1
           sha256sum usm-* > checksums.txt
+          echo "--- checksums.txt ---"
           cat checksums.txt
 
-      - name: 自校验 action.yml SHA256 占位符
+      - name: 自校验 —— 二进制与 v1 引用一致
+        env:
+          LINUX_AMD64_SHA: ${{ hashFiles('dist/usm-linux-amd64') }}
         run: |
           set -euo pipefail
-          EXPECTED=$(grep usm-linux-amd64 dist/checksums.txt | awk '{print $1}')
-          ACTUAL=$(grep -oE '[a-f0-9]{64}' action.yml | head -1)
-          if [ -n "$ACTUAL" ] && [ "$EXPECTED" != "$ACTUAL" ] && [ "$ACTUAL" != "<SHA256_PLACEHOLDER>" ]; then
-            echo "::error::action.yml SHA256 与发布产物不一致（期望=$EXPECTED，实际=$ACTUAL）"
+          EXPECTED=$(grep 'usm-linux-amd64$' dist/checksums.txt | awk '{print $1}')
+          ACTUAL=$(sha256sum dist/usm-linux-amd64 | awk '{print $1}')
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::checksums.txt 与实际产物不符（清单=$EXPECTED 实际=$ACTUAL）"
             exit 1
           fi
-          echo "SHA256 匹配检查通过: $EXPECTED"
+          echo "linux-amd64 SHA256: $ACTUAL"
 
-      - name: 上传 release 资产
+      - name: 写回 action.yml（版本 + SHA256，C4-1/C4-2）
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ env.USM_VERSION_NO_V }}
         run: |
           set -euo pipefail
-          gh release create "${GITHUB_REF_NAME}" dist/* \
-            --title "usm ${GITHUB_REF_NAME}" \
-            --generate-notes || \
-          gh release upload "${GITHUB_REF_NAME}" dist/* --clobber
+          SHA=$(grep 'usm-linux-amd64$' dist/checksums.txt | awk '{print $1}')
 
-  move-v1-tag:
-    needs: release
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: 移动 v1 大版本 tag（SPEC-ACTION §5）
+          python3 - "$SHA" "$VERSION" <<'PY'
+          import re, sys
+          sha, version = sys.argv[1], sys.argv[2]
+          p = 'action.yml'
+          s = open(p, encoding='utf-8').read()
+          before = s
+
+          s = re.sub(r"(USM_BINARY_SHA256:\s*')[^']*(')", rf"\g<1>{sha}\g<2>", s)
+          s = re.sub(r"(USM_BINARY_VERSION:\s*')[^']*(')", rf"\g<1>{version}\g<2>", s)
+
+          if s == before:
+              print('::error::action.yml 未找到 USM_BINARY_SHA256 / USM_BINARY_VERSION 常量')
+              sys.exit(1)
+          open(p, 'w', encoding='utf-8', newline='\n').write(s)
+          print(f'action.yml 已更新: sha256={sha} version={version}')
+          PY
+
+          # 校验确实改动了
+          if git diff --quiet -- action.yml; then
+            echo "::error::action.yml 未产生变更，写回失败"
+            exit 1
+          fi
+          git --no-pager diff -- action.yml
+
+      - name: 提交并推送 action.yml（回填）
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ env.USM_VERSION }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch --tags
-          git tag -f v1 "${GITHUB_REF_NAME}"
-          git push -f origin v1
+          git add action.yml
+          git commit -m "chore(release): 回填 ${VERSION} 的二进制版本与 SHA256 (C4-1/C4-2)"
+          # tag 已存在，用 push 到当前分支即可；force-with-lease 避免覆盖他人提交
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: 发布 release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ env.USM_VERSION }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG 已存在，改为覆盖资产"
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* \
+              --title "usm $TAG" \
+              --generate-notes \
+              --verify-tag
+          fi
+          echo "--- release 资产 ---"
+          gh release view "$TAG" --json assets --jq '.assets[].name'
+
+  # ── 3. 移动 v1 大版本 tag（SPEC-ACTION §5） ─────────────────────
+  move-v1-tag:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # 关键：原版缺这一步，git fetch --tags 会失败
+
+      - name: 移动 v1 大版本 tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ env.USM_VERSION }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --tags --force
+          git tag -f v1 "$TAG"
+          git push -f origin refs/tags/v1
+          echo "v1 -> $TAG"

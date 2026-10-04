@@ -5,16 +5,15 @@ branding:
   color: green
 
 # ── 版本策略（SPEC-ACTION §5） ────────────────────────────────
-# v0（当前）: 源码模式 —— setup-go + go run ./cmd/usm（无 Python，DR-6 从零搭建）。
-# v1（release 后）: 下载 release 二进制 + sha256sum -c 校验（C4-1/C4-2），
-#                  inputs/outputs 一字不改；version/sha 由 release CI 改写本文件。
+# v0（当前，默认）: 源码模式 —— setup-go + go run ./cmd/usm（无 Python，DR-6 从零搭建）。
+# v1（release 产出后启用）: 下载 release 二进制 + sha256sum -c 校验（C4-1/C4-2），
+#                  inputs/outputs 一字不改；下面两个常量由 release CI 自动写回。
 # 调用方一律 pin commit-sha：uses: acg-q/userscript-console@<40位sha>
 # 外部调用方可使用 v1 tag：uses: acg-q/userscript-console@v1
-
-# v1 SHA256 校验和（由 release CI 自动生成，勿手动修改）。
-# shellcheck disable=SC2016
 env:
-  USM_BINARY_SHA256: '<SHA256_PLACEHOLDER>'
+  # 由 .github/workflows/release.yml 的 publish job 自动写入，勿手动修改
+  USM_BINARY_VERSION: '0.0.0'
+  USM_BINARY_SHA256: '0000000000000000000000000000000000000000000000000000000000000000'
 
 inputs:
   command:
@@ -45,8 +44,11 @@ inputs:
     description: '仅 cleanup：必须显式 true 才真正删除（默认 dry-run）'
     default: 'false'
   version:
-    description: 'v1 二进制版本覆盖（仅自测用；v0 源码模式忽略）'
-    default: '0.1.0'
+    description: 'v1 二进制版本覆盖（留空=用 release CI 写入的 USM_BINARY_VERSION；仅自测用）'
+    default: ''
+  use-binary:
+    description: 'true=下载并校验 release 二进制（v1）；false=源码模式 go run（v0，默认）'
+    default: 'false'
 
 outputs:
   authorized:
@@ -65,8 +67,45 @@ outputs:
 runs:
   using: composite
   steps:
-    # ── v0：源码模式（无 release 前） ──────────────────────────
+    # ── v1：二进制模式（use-binary=true） ──────────────────────
+    - name: Fetch binary
+      id: fetch
+      if: ${{ inputs.use-binary == 'true' }}
+      shell: bash
+      env:
+        # 版本：显式 input 优先，否则用 release CI 写入的常量
+        WANT_VERSION: ${{ inputs.version != '' && inputs.version || env.USM_BINARY_VERSION }}
+        WANT_SHA256: ${{ env.USM_BINARY_SHA256 }}
+      run: |
+        set -euo pipefail
+        DEST="$RUNNER_TEMP/usm"
+
+        URL="https://github.com/${{ github.repository_owner }}/userscript-console/releases/download/v${WANT_VERSION}/usm-linux-amd64"
+        echo "下载: $URL"
+        curl -fsSL --retry 3 --retry-delay 2 -o "$DEST" "$URL"
+
+        # sha256 校验（供应链防线，R6）。占位值说明 release 尚未回填 → 直接失败，
+        # 避免「校验了个 0」这种假安全感。
+        case "$WANT_SHA256" in
+          ''|0000000000000000000000000000000000000000000000000000000000000000)
+            echo "::error::USM_BINARY_SHA256 仍为占位值，无法校验二进制（请先跑一次 Release workflow）"
+            exit 1
+            ;;
+        esac
+        ACTUAL=$(sha256sum "$DEST" | awk '{print $1}')
+        if [ "$ACTUAL" != "$WANT_SHA256" ]; then
+          echo "::error::二进制 SHA256 不匹配（期望=$WANT_SHA256 实际=$ACTUAL）"
+          exit 1
+        fi
+        echo "SHA256 校验通过: $ACTUAL"
+
+        chmod +x "$DEST"
+        "$DEST" version
+        echo "path=$DEST" >> "$GITHUB_OUTPUT"
+
+    # ── v0：源码模式（默认） ────────────────────────────────────
     - name: Setup Go
+      if: ${{ inputs.use-binary != 'true' }}
       uses: actions/setup-go@v6
       with:
         go-version-file: ${{ github.action_path }}/go.mod
@@ -87,13 +126,15 @@ runs:
         USM_KEEP: ${{ inputs.keep }}
         USM_APPLY: ${{ inputs.apply }}
         USM_ROOT: ${{ github.workspace }}
+        # v1 走预下载二进制；v0 走源码
+        USM_BIN: ${{ steps.fetch.outputs.path }}
       run: |
         set -euo pipefail
         USM_ACTION_PATH="${{ github.action_path }}"
 
         # PAGES_BASE 自动推导：https://<owner>.github.io/<repo>
-        # GITHUB_REPOSITORY 格式为 "owner/repo"，bash 参数替换转 "-"
-        : "${PAGES_BASE:=$(echo "https://${GITHUB_REPOSITORY/\//\-}.github.io")}"
+        # GITHUB_REPOSITORY 格式为 "owner/repo"，把 / 换成 -（github.io 的写法）
+        : "${PAGES_BASE:=https://${GITHUB_REPOSITORY/\//-}.github.io}"
         export PAGES_BASE
 
         # 子命令白名单（未知值 exit 2；不拼接用户输入）
@@ -108,12 +149,18 @@ runs:
         esac
 
         rc=0
-        ( cd "$USM_ACTION_PATH" && go run ./cmd/usm "${CMD[@]}" --json ) > usm-out.json || rc=$?
+        if [ -n "$USM_BIN" ]; then
+          # v1：预下载二进制（已 sha256 校验）
+          "$USM_BIN" "${CMD[@]}" --json > usm-out.json || rc=$?
+        else
+          # v0：源码模式
+          ( cd "$USM_ACTION_PATH" && go run ./cmd/usm "${CMD[@]}" --json ) > usm-out.json || rc=$?
+        fi
 
         # 始终解析已有输出（失败也要把 result 回传给调用方，便于失败回帖）
         if [ -s usm-out.json ]; then
           # heredoc 分隔符必须开闭一致：只求值一次并复用
-          # （原写法在开关两处各跑一次 \`date +%s\`，跨秒即产生不同分隔符，
+          # （原写法在开关两处各跑一次 `date +%s`，跨秒即产生不同分隔符，
           #   报 "Matching delimiter not found" 并使整个 step 失败）
           EOF_ID="USM_EOF_$(date +%s%N)"
           {
@@ -133,14 +180,3 @@ runs:
           [ -s usm-out.json ] && jq -r 'if .errors then (.errors[] | "ERROR: \(.)") else empty end' usm-out.json >&2 || true
           exit "$rc"
         fi
-
-    # ── v1（release 后启用，接口不变；由 C4-2 切换） ─────────────
-    # - name: Fetch binary
-    #   shell: bash
-    #   run: |
-    #     set -euo pipefail
-    #     URL="https://github.com/${{ github.repository_owner }}/userscript-console/releases/download/v${{ inputs.version }}/usm-linux-amd64"
-    #     curl -fsSL -o "$RUNNER_TEMP/usm" "$URL"
-    #     echo "${{ env.USM_BINARY_SHA256 }}  $RUNNER_TEMP/usm" | sha256sum -c -
-    #     chmod +x "$RUNNER_TEMP/usm"
-    #     echo "$RUNNER_TEMP/usm" > "$GITHUB_OUTPUT"
