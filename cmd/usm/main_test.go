@@ -35,6 +35,10 @@ func TestRunUsage(t *testing.T) {
 		{"version", []string{"version"}, 0},
 		{"help", []string{"help"}, 0},
 		{"未接线子命令", []string{"build"}, 1},
+		{"doctor 无 check", []string{"doctor"}, 0},
+		{"doctor --check 无 registry 应失败", []string{"doctor", "--check"}, 1},
+		{"doctor 未知参数", []string{"doctor", "--bogus"}, 2},
+		{"doctor --root 缺参", []string{"doctor", "--root"}, 2},
 		{"snapshot 缺参数", []string{"snapshot"}, 2},
 	}
 	for _, tt := range tests {

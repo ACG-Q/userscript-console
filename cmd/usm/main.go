@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/acg-q/userscript-console/internal/cli"
 	"github.com/acg-q/userscript-console/internal/registry"
 	"github.com/acg-q/userscript-console/internal/snapshot"
 )
@@ -20,6 +21,30 @@ var version = "dev"
 
 func main() {
 	os.Exit(run(os.Args[1:]))
+}
+
+// doctorRun 解析 `doctor [--check] [--json] [--root path]`（SPEC-CLI §5）。
+func doctorRun(args []string) int {
+	root, check, asJSON := ".", false, false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--check":
+			check = true
+		case "--json":
+			asJSON = true
+		case "--root":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, "ERROR: --root 缺少参数")
+				return 2
+			}
+			i++
+			root = args[i]
+		default:
+			fmt.Fprintf(os.Stderr, "ERROR: doctor 未知参数 %q\n", args[i])
+			return 2
+		}
+	}
+	return cli.RunDoctor(root, check, asJSON)
 }
 
 func run(args []string) int {
@@ -36,7 +61,9 @@ func run(args []string) int {
 		return 0
 	case "snapshot":
 		return snapshot.Run("tests/snapshot", args[1:])
-	case "run-command", "project", "build", "cleanup", "doctor":
+	case "doctor":
+		return doctorRun(args[1:])
+	case "run-command", "project", "build", "cleanup":
 		fmt.Fprintf(os.Stderr, "ERROR: 子命令 %q 尚未接线（开发中，见 PLAN 阶段 3）\n", args[0])
 		return 1
 	default:
