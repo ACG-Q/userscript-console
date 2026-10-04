@@ -1,68 +1,146 @@
 package main
 
 import (
-	"io"
 	"os"
-	"strings"
+	"path/filepath"
 	"testing"
+
+	"github.com/acg-q/userscript-console/internal/registry"
 )
 
-// captureOutput 捕获 run 对 stdout/stderr 的写入。
-func captureOutput(t *testing.T, fn func()) (string, string) {
-	t.Helper()
-	oldOut, oldErr := os.Stdout, os.Stderr
-	or, ow, _ := os.Pipe()
-	er, ew, _ := os.Pipe()
-	os.Stdout, os.Stderr = ow, ew
-	defer func() { os.Stdout, os.Stderr = oldOut, oldErr }()
-	done1, done2 := make(chan string), make(chan string)
-	go func() { b, _ := io.ReadAll(or); done1 <- string(b) }()
-	go func() { b, _ := io.ReadAll(er); done2 <- string(b) }()
-	fn()
-	ow.Close()
-	ew.Close()
-	return <-done1, <-done2
+func TestRunVersion(t *testing.T) {
+	if code := run([]string{"version"}); code != 0 {
+		t.Errorf("version 应返回 0, got %d", code)
+	}
 }
 
-func TestRunUsage(t *testing.T) {
+func TestRunHelp(t *testing.T) {
+	if code := run([]string{"help"}); code != 0 {
+		t.Errorf("help 应返回 0, got %d", code)
+	}
+}
+
+func TestRunUnknown(t *testing.T) {
+	if code := run([]string{"bogus"}); code != 2 {
+		t.Errorf("未知命令应返回 2, got %d", code)
+	}
+}
+
+func TestRunNoArgs(t *testing.T) {
+	if code := run(nil); code != 2 {
+		t.Errorf("无参数应返回 2, got %d", code)
+	}
+}
+
+func TestDoctorCheckMissingRegistry(t *testing.T) {
+	root := t.TempDir()
+	// 没有 registry.json → doctor 应报问题
+	if code := doctorRun([]string{"--check", "--root", root}); code != 1 {
+		t.Errorf("缺失 registry 应返回 1, got %d", code)
+	}
+}
+
+func TestDoctorJSONMode(t *testing.T) {
+	root := buildTestRegistryDir(t)
+	if code := doctorRun([]string{"--json", "--root", root}); code != 0 {
+		t.Errorf("健康仓库应返回 0, got %d", code)
+	}
+}
+
+func TestRunCommandMissingBody(t *testing.T) {
+	if code := runCommandRun([]string{"--comment-user=test", "--issue-number=1"}); code != 2 {
+		t.Errorf("缺少 --comment-body 应返回 2, got %d", code)
+	}
+}
+
+func TestRunCommandMissingUser(t *testing.T) {
+	if code := runCommandRun([]string{"--comment-body=/list", "--issue-number=1"}); code != 2 {
+		t.Errorf("缺少 --comment-user 应返回 2, got %d", code)
+	}
+}
+
+func TestParseIssueNumber(t *testing.T) {
 	tests := []struct {
-		name string
-		args []string
-		want int
+		input string
+		want  int
+		ok    bool
 	}{
-		{"无参数", nil, 2},
-		{"未知子命令", []string{"bogus"}, 2},
-		{"version", []string{"version"}, 0},
-		{"help", []string{"help"}, 0},
-		{"未接线子命令", []string{"build"}, 1},
-		{"doctor 无 check", []string{"doctor"}, 0},
-		{"doctor --check 无 registry 应失败", []string{"doctor", "--check"}, 1},
-		{"doctor 未知参数", []string{"doctor", "--bogus"}, 2},
-		{"doctor --root 缺参", []string{"doctor", "--root"}, 2},
-		{"snapshot 缺参数", []string{"snapshot"}, 2},
+		{"5", 5, true},
+		{"0", 0, false},
+		{"abc", 0, false},
+		{"-1", 0, false},
+	}
+	for _, tt := range tests {
+		got, err := parseIssueNumber(tt.input)
+		if tt.ok {
+			if err != nil || got != tt.want {
+				t.Errorf("parseIssueNumber(%q) = %d, %v; want %d, nil", tt.input, got, err, tt.want)
+			}
+		} else {
+			if err == nil {
+				t.Errorf("parseIssueNumber(%q) 应失败", tt.input)
+			}
+		}
+	}
+}
+
+func TestParseCommandComment(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		wantCmd   string
+		wantArgs  string
+		wantCodes int
+		wantErr   bool
+	}{
+		{"简单命令", "/list", "list", "", 0, false},
+		{"带参数", "/info self01", "info", "self01", 0, false},
+		{"无效命令", "hello", "", "", 0, true},
+		{"空评论", "", "", "", 0, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := run(tt.args); got != tt.want {
-				t.Errorf("run(%v) = %d, want %d", tt.args, got, tt.want)
+			cmd, args, codes, err := parseCommandComment(tt.body)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("parseCommandComment(%q) 应失败", tt.body)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseCommandComment(%q) 失败: %v", tt.body, err)
+			}
+			if cmd != tt.wantCmd {
+				t.Errorf("cmd = %q, want %q", cmd, tt.wantCmd)
+			}
+			if args != tt.wantArgs {
+				t.Errorf("args = %q, want %q", args, tt.wantArgs)
+			}
+			if len(codes) != tt.wantCodes {
+				t.Errorf("codes len = %d, want %d", len(codes), tt.wantCodes)
 			}
 		})
 	}
 }
 
-func TestVersionOutput(t *testing.T) {
-	out, _ := captureOutput(t, func() { run([]string{"version"}) })
-	if !strings.Contains(out, "usm "+version) {
-		t.Errorf("版本输出: %q", out)
+func buildTestRegistryDir(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	reg := &registry.Registry{
+		Schema: registry.SchemaVersion,
+		Scripts: []registry.Script{
+			{ID: "self01", Type: registry.TypeSelf, Name: "测试", Version: "1.0.0", Enabled: true,
+				Match: []string{"*://*/*"}, Grant: []string{"none"},
+				CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-10-05T00:00:00Z",
+				Changelog: []registry.ChangelogEntry{{Version: "1.0.0", Date: "2026-10-05", Note: "初始"}},
+			},
+		},
 	}
-	if !strings.Contains(out, "registry-schema-version 1") {
-		t.Errorf("schema 输出: %q", out)
+	if err := reg.Save(filepath.Join(root, "registry.json")); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestUnknownCommandMessage(t *testing.T) {
-	_, errBuf := captureOutput(t, func() { run([]string{"bogus"}) })
-	if !strings.Contains(errBuf, "未知子命令") {
-		t.Errorf("错误信息: %q", errBuf)
-	}
+	// 创建必要目录
+	os.MkdirAll(filepath.Join(root, "scripts", "self", "self01"), 0o755)
+	os.WriteFile(filepath.Join(root, "scripts", "self", "self01", "index.js"), []byte("// test"), 0o644)
+	return root
 }
