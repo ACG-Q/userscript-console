@@ -5,16 +5,11 @@ branding:
   color: green
 
 # ── 版本策略（SPEC-ACTION §5） ────────────────────────────────
-# v0（当前，默认）: 源码模式 —— setup-go + go run ./cmd/usm（无 Python，DR-6 从零搭建）。
-# v1（release 产出后启用）: 下载 release 二进制 + sha256sum -c 校验（C4-1/C4-2），
-#                  inputs/outputs 一字不改；下面两个常量由 release CI 自动写回。
+# v0（默认）: 源码模式 —— setup-go + go run ./cmd/usm（无 Python，DR-6 从零搭建）。
+# v1: 下载 release 二进制 + sha256 校验（use-binary=true，C4-1/C4-2），
+#      inputs/outputs 一字不改。
 # 调用方一律 pin commit-sha：uses: acg-q/userscript-console@<40位sha>
 # 外部调用方可使用 v1 tag：uses: acg-q/userscript-console@v1
-env:
-  # 由 .github/workflows/release.yml 的 publish job 自动写入，勿手动修改。
-  # 二进制名固定 usm-linux-amd64，tag 为 v<USM_BINARY_VERSION>。
-  USM_BINARY_VERSION: '0.0.0'
-  USM_BINARY_SHA256: '0000000000000000000000000000000000000000000000000000000000000000'
 
 inputs:
   command:
@@ -45,11 +40,22 @@ inputs:
     description: '仅 cleanup：必须显式 true 才真正删除（默认 dry-run）'
     default: 'false'
   version:
-    description: 'v1 二进制版本覆盖（留空=用 release CI 写入的 USM_BINARY_VERSION；仅自测用）'
+    description: 'v1 二进制版本覆盖（留空=用 binary-version 自动回填值；仅自测用）'
     default: ''
   use-binary:
     description: 'true=下载并校验 release 二进制（v1）；false=源码模式 go run（v0，默认）'
     default: 'false'
+
+  # ⚠️ 以下两个是**内部常量**，不是给调用方填的 input。
+  # GitHub Action 元数据不认顶层 `env:`（会被静默忽略，导致 ${{ env.X }} 展开为空），
+  # 所以只能借 inputs.default 承载，由 release CI 的 publish job 自动写回。
+  # 改这两个值请打 tag 走 Release workflow，勿手动编辑。
+  binary-version:
+    description: '内部：v1 二进制版本号（release CI 自动写回）'
+    default: '0.0.0'
+  binary-sha256:
+    description: '内部：v1 二进制 sha256（release CI 自动写回）'
+    default: '0000000000000000000000000000000000000000000000000000000000000000'
 
 outputs:
   authorized:
@@ -74,12 +80,19 @@ runs:
       if: ${{ inputs.use-binary == 'true' }}
       shell: bash
       env:
-        # 版本：显式 input 优先，否则用 release CI 写入的常量
-        WANT_VERSION: ${{ inputs.version != '' && inputs.version || env.USM_BINARY_VERSION }}
-        WANT_SHA256: ${{ env.USM_BINARY_SHA256 }}
+        # 版本：显式 input 优先，否则用 release CI 写回的 binary-version
+        WANT_VERSION: ${{ inputs.version != '' && inputs.version || inputs.binary-version }}
+        WANT_SHA256: ${{ inputs.binary-sha256 }}
       run: |
         set -euo pipefail
         DEST="$RUNNER_TEMP/usm"
+
+        # 版本号自检：为空说明 inputs.default 没生效（GitHub 元数据不支持顶层 env，
+        # 常量必须走 inputs 承载；这里显式报错而非发出畸形 URL）
+        if [ -z "$WANT_VERSION" ]; then
+          echo "::error::binary-version 为空 —— release CI 尚未回填或 action.yml 被改坏"
+          exit 1
+        fi
 
         URL="https://github.com/${{ github.repository_owner }}/userscript-console/releases/download/v${WANT_VERSION}/usm-linux-amd64"
         echo "下载: $URL"

@@ -170,11 +170,13 @@ jobs:
           s = open(p, encoding='utf-8').read()
           before = s
 
-          s = re.sub(r"(USM_BINARY_SHA256:\s*')[^']*(')", rf"\g<1>{sha}\g<2>", s)
-          s = re.sub(r"(USM_BINARY_VERSION:\s*')[^']*(')", rf"\g<1>{version}\g<2>", s)
+          # 常量走 inputs.default 承载 —— GitHub Action 元数据不认顶层 env:
+          # （会被静默忽略，导致 ${{ env.X }} 展开为空 → 畸形下载 URL）
+          s = re.sub(r"(binary-sha256:\s*\n?\s*default:\s*')[^']*(')", rf"\g<1>{sha}\g<2>", s)
+          s = re.sub(r"(binary-version:\s*\n?\s*default:\s*')[^']*(')", rf"\g<1>{version}\g<2>", s)
 
           if s == before:
-              print('::error::action.yml 未找到 USM_BINARY_SHA256 / USM_BINARY_VERSION 常量')
+              print('::error::action.yml 未找到 binary-sha256 / binary-version 的 default')
               sys.exit(1)
           open(p, 'w', encoding='utf-8', newline='\n').write(s)
           print(f'action.yml 已更新: sha256={sha} version={version}')
