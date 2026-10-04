@@ -17,6 +17,14 @@ type DoctorReport struct {
 	OK       bool     `json:"ok"`
 }
 
+// Check 汇总数据一致性检查结果，不做任何输出。
+// 调用方自行决定输出格式 —— action.yml 需要 {authorized, changed, result} 结构，
+// 而 CLI 直接跑 doctor 时需要人类可读文本或 DoctorReport，两者不能共用一次调用。
+func Check(root string) (problems []string, ok bool) {
+	problems = doctorProblems(root)
+	return problems, len(problems) == 0
+}
+
 // RunDoctor 执行数据一致性自检（SPEC-DATA §6 六条）。
 // check=true 时打印逐条问题；json=true 时输出 JSON。返回进程退出码（0/1）。
 func RunDoctor(root string, check, asJSON bool) int {

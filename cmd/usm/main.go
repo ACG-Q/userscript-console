@@ -58,6 +58,18 @@ func run(args []string) int {
 	}
 }
 
+// hasJSONFlag 判断参数里是否带 --json。
+// action.yml 对**所有**子命令都追加 --json 并用 jq 解析 stdout，
+// 因此每个子命令都必须自己识别它（见 emitResult）。
+func hasJSONFlag(args []string) bool {
+	for _, a := range args {
+		if a == "--json" {
+			return true
+		}
+	}
+	return false
+}
+
 // ── doctor ──────────────────────────────────────────────────
 
 func doctorRun(args []string) int {
@@ -80,7 +92,31 @@ func doctorRun(args []string) int {
 			return 2
 		}
 	}
-	return cli.RunDoctor(root, check, asJSON)
+
+	// action.yml 对所有子命令都追加 --json 并用 jq 解析 stdout，
+	// 故 --json 时必须输出 {authorized, changed, result} 结构
+	//（cli.RunDoctor 的 {problems, ok} 结构 jq 取不到 .changed）。
+	if asJSON {
+		problems, ok := cli.Check(root)
+		result := "✅ doctor 检查通过"
+		if !ok {
+			result = "❌ doctor 检查未通过：\n" + strings.Join(problems, "\n")
+		}
+		payload := map[string]any{
+			"authorized": true,
+			"changed":    false,
+			"result":     result,
+		}
+		if err := writeJSON(os.Stdout, payload); err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: 写 JSON 失败: %v\n", err)
+			return 1
+		}
+		if check && !ok {
+			return 1
+		}
+		return 0
+	}
+	return cli.RunDoctor(root, check, false)
 }
 
 // ── run-command ─────────────────────────────────────────────
@@ -166,6 +202,27 @@ func projectRun(args []string) int {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		return 1
 	}
+	return emitResult(res, hasJSONFlag(args))
+}
+
+// emitResult 输出命令结果：--json 时给 action.yml 用的 JSON，否则给人看的文本。
+//
+// action.yml 对**所有**子命令都追加 --json 并用 jq 解析 stdout，
+// 所以任何子命令在 --json 下都必须输出合法 JSON —— 否则 jq parse error
+// 会连带 $GITHUB_OUTPUT 的 heredoc 解析失败，报
+// "Matching delimiter not found" + exit 5（真实事故，见 json_output_test.go）。
+func emitResult(res commands.Result, asJSON bool) int {
+	if asJSON {
+		if err := writeJSON(os.Stdout, map[string]any{
+			"authorized": true,
+			"changed":    res.Changed,
+			"result":     res.Text,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: 写 JSON 失败: %v\n", err)
+			return 1
+		}
+		return 0
+	}
 	fmt.Println(res.Text)
 	return 0
 }
@@ -185,8 +242,7 @@ func buildRun(args []string) int {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		return 1
 	}
-	fmt.Println(res.Text)
-	return 0
+	return emitResult(res, hasJSONFlag(args))
 }
 
 // ── cleanup ─────────────────────────────────────────────────
@@ -209,8 +265,7 @@ func cleanupRun(args []string) int {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		return 1
 	}
-	fmt.Println(res.Text)
-	return 0
+	return emitResult(res, hasJSONFlag(args))
 }
 
 // ── 辅助函数 ────────────────────────────────────────────────
