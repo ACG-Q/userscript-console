@@ -1,0 +1,28 @@
+{
+  "url": "https://api.github.com/gists/plainfixture",
+  "id": "plainfixture",
+  "description": "Test fixture gist without userscript (plain JS only)",
+  "public": true,
+  "created_at": "2026-01-15T10:00:00Z",
+  "updated_at": "2026-01-15T10:00:00Z",
+  "files": {
+    "utils.js": {
+      "filename": "utils.js",
+      "type": "application/javascript",
+      "size": 50,
+      "truncated": false,
+      "raw_url": "https://gist.githubusercontent.com/example/plainfixture/raw/utils.js",
+      "content": "// Plain JS, no userscript header\nfunction hello() {\n    return 'world';\n}\nconsole.log(hello());\n"
+    },
+    "helper.js": {
+      "filename": "helper.js",
+      "type": "application/javascript",
+      "size": 30,
+      "truncated": false,
+      "raw_url": "https://gist.githubusercontent.com/example/plainfixture/raw/helper.js",
+      "content": "// Another plain JS file\nvar x = 1;\n"
+    }
+  },
+  "node_id": "MDQ6R2lzdDk4NzY1NA==",
+  "score": 1.0
+}

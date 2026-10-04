@@ -1,0 +1,43 @@
+{
+  "url": "https://api.github.com/gists/testfixture123",
+  "id": "testfixture123",
+  "description": "Test fixture gist with userscript",
+  "public": true,
+  "created_at": "2026-01-15T10:00:00Z",
+  "updated_at": "2026-01-15T10:00:00Z",
+  "files": {
+    "notes.md": {
+      "filename": "notes.md",
+      "type": "text/markdown",
+      "size": 42,
+      "truncated": false,
+      "raw_url": "https://gist.githubusercontent.com/example/testfixture123/raw/notes.md",
+      "content": "# Test Gist\nThis is a note file, not a script."
+    },
+    "demo.user.js": {
+      "filename": "demo.user.js",
+      "type": "application/x-userscript",
+      "size": 350,
+      "truncated": false,
+      "raw_url": "https://gist.githubusercontent.com/example/testfixture123/raw/demo.user.js",
+      "content": "// ==UserScript==\n// @name         Gist Fixture Script\n// @namespace    http://tampermonkey.net/\n// @version      2.0.0\n// @description  Fixture: test gist adapter with multi-file gist\n// @author       Gist Author\n// @match        https://example.com/*\n// @grant        GM_addStyle\n// ==/UserScript==\n\n(function() {\n    'use strict';\n    console.log('Gist fixture');\n})();\n"
+    },
+    "readme.txt": {
+      "filename": "readme.txt",
+      "type": "text/plain",
+      "size": 20,
+      "truncated": false,
+      "raw_url": "https://gist.githubusercontent.com/example/testfixture123/raw/readme.txt",
+      "content": "Readme content"
+    }
+  },
+  "comments": 0,
+  "user": null,
+  "comments_url": "https://api.github.com/gists/testfixture123/comments",
+  "owner": null,
+  "html_url": "https://gist.github.com/example/testfixture123",
+  "git_pull_url": "https://gist.github.com/testfixture123.git",
+  "git_push_url": "https://gist.github.com/testfixture123.git",
+  "node_id": "MDQ6R2lzdDEyMzQ1Ng==",
+  "score": 1.0
+}
