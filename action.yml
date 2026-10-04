@@ -9,6 +9,7 @@ branding:
 # v1（release 后）: 下载 release 二进制 + sha256sum -c 校验（C4-1/C4-2），
 #                  inputs/outputs 一字不改；version/sha 由 release CI 改写本文件。
 # 调用方一律 pin commit-sha：uses: acg-q/userscript-console@<40位sha>
+# 外部调用方可使用 v1 tag：uses: acg-q/userscript-console@v1
 
 # v1 SHA256 校验和（由 release CI 自动生成，勿手动修改）。
 # shellcheck disable=SC2016
