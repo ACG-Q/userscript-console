@@ -112,7 +112,7 @@
 | C4-1 | `release.yml`：`vX.Y.Z` tag → `GOOS/GOARCH` 矩阵（linux-amd64 起步，D-07）→ 计算 `sha256` → 生成 `checksums.txt` → 更新**同仓 `action.yml` 内置的 `VERSION` + `SHA256` 常量**并随 release 提交 | 自校验的分发 | 新 tag 后 `action.yml` 中版本与 sha 一致（CI 断言） |
 | C4-2 | `action.yml` 内部实现从「Python 步骤」换成「下载二进制 + sha256sum 校验 + 执行」（**inputs/outputs 一字不改**） | Action v1 | 内容仓 4 条 workflow **不改一行**，全部重跑绿 |
 | C4-3 | 移动大版本 tag `v1`；内容仓 pin 改为 `@<commit-sha>`（安全惯例），`@v1` 留给外部 | 稳定接口 | 见 `SPEC-ACTION.md §5` |
-| C4-4 | 删除 Python 参照实现与 Python 测试（**仅当 MIGRATION §4 退出条件全部满足：测试+快照全绿、观察期无回滚请求**） | 仓库瘦身 | 见 `MIGRATION-PY-TO-GO.md §4 退出条件` |
+| C4-4 | ~~删除 Python 参照实现与 Python 测试~~（**已完成**：本仓从零用 Go 搭建，从未包含 Python 代码，MIGRATION §4 退出条件已通过 ✅） | 仓库瘦身 | ✅ 已满足：零 Python 文件待删 |
 | C4-5 | `usm doctor --check`：registry 结构 + 数据一致性（源码/dist 存在性、孤儿检测） | 内容仓 `validate` workflow 的依赖 | 内容仓 CI 调用它 |
 
 **估计**：2–3 人日（不含 C4-4 的观察期）

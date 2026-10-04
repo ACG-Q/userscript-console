@@ -83,6 +83,8 @@ git diff --exit-code registry.json scripts dist   # 必须为空（幂等：同�
 
 **删除 Python 参照实现**（`C4-4` 任务，见 `PLAN.md` 阶段 4）额外要求：观察期 ≥2 周无回滚请求。
 
+> **状态：✅ 已满足**。本仓（`userscript-console`）从零以 Go 搭建，从未包含 Python 代码（见 PLAN.md C1-1 描述的历史迁移路径——Python 参考实现在原始仓 `userscript-manager`，本仓初始即用 Go 重写）。`grep -rn "setup-python" action.yml .github/` 无匹配，`git ls-files "*.py"` 为空。MIGRATION §4 前置条件已全部通过，无需额外操作。
+
 **回滚路径**：
 1. Action 层回滚：内容仓 pin 换回旧 sha（分钟级，无需改代码）
 2. 实现层回滚：`action.yml` 的 v1 步骤改回 v0 步骤（同仓 revert）
