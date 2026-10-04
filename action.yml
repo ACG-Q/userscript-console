@@ -50,12 +50,13 @@ inputs:
   # GitHub Action 元数据不认顶层 `env:`（会被静默忽略，导致 ${{ env.X }} 展开为空），
   # 所以只能借 inputs.default 承载，由 release CI 的 publish job 自动写回。
   # 改这两个值请打 tag 走 Release workflow，勿手动编辑。
+  # 当前值来自 v1.0.0 release（sha256 与 checksums.txt 交叉核对一致）。
   binary-version:
     description: '内部：v1 二进制版本号（release CI 自动写回）'
-    default: '0.0.0'
+    default: '1.0.0'
   binary-sha256:
     description: '内部：v1 二进制 sha256（release CI 自动写回）'
-    default: '0000000000000000000000000000000000000000000000000000000000000000'
+    default: 'aea858220d62584a2dff8c4f5702e00d67b185999e288e1ff7e8656924585ce4'
 
 outputs:
   authorized:
