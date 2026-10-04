@@ -1,9 +1,11 @@
 # ── 数据（本仓永不持有数据，SPEC-DATA §2） ──
-registry.json
+# 注意：必须用前导 / 锚定仓库根，否则会误伤 tests/corpus/inputs/registry.json
+# （快照基线依赖它，见 cmd/usm/snapgen.go）
+/registry.json
 /scripts/
 /dist/
 /archive/
-command_result.txt
+/command_result.txt
 
 # ── 站点部署产物 ──
 _site/
