@@ -1,0 +1,52 @@
+name: Test
+
+on:
+  push:
+    branches: [master]
+  pull_request: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4   # TODO pin by sha（仓库惯例，见 SPEC-ACTION §4.6）
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: 格式（gofumpt 目标，先用 gofmt 把关）
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "gofmt 需要格式化:"; echo "$out"; exit 1; fi
+
+      - name: vet
+        run: go vet ./...
+
+      # TODO 集成阶段接入: golangci-lint run（govet/staticcheck/errcheck/ineffassign/gofumpt）
+      # - name: lint
+      #   uses: golangci/golangci-lint-action@v6
+      #   with: { version: latest }
+
+      - name: 测试 + 覆盖率
+        run: |
+          go test ./... -covermode=atomic -coverprofile=cover.out
+          go tool cover -func=cover.out | tail -1
+          # TODO 集成阶段收紧阈值（SPEC-ARCH-TEST §4: ≥90%）
+          # pct=$(go tool cover -func=cover.out | tail -1 | grep -oE '[0-9.]+%' | tr -d '%')
+          # awk -v p="$pct" 'BEGIN{exit !(p>=90)}'
+
+      # TODO 集成阶段启用（快照生成器接线后）:
+      # - name: 快照基线
+      #   run: go run ./cmd/usm snapshot check
+
+      - name: 构建冒烟
+        run: go build ./...

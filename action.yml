@@ -1,0 +1,130 @@
+name: 'Userscript Console'
+description: '油猴脚本控制台：命令执行 / Issue 投影 / 站点构建 / 面板清理 / 数据自检'
+branding:
+  icon: terminal
+  color: green
+
+# ── 版本策略（SPEC-ACTION §5） ────────────────────────────────
+# v0（当前）: 源码模式 —— setup-go + go run ./cmd/usm（无 Python，DR-6 从零搭建）。
+# v1（release 后）: 下载 release 二进制 + sha256sum -c 校验（C4-1/C4-2），
+#                  inputs/outputs 一字不改；version/sha 由 release CI 改写本文件。
+# 调用方一律 pin commit-sha：uses: acg-q/userscript-console@<40位sha>
+
+inputs:
+  command:
+    description: 'run-command | project | build | cleanup | doctor'
+    required: true
+  github-token:
+    description: 'GITHUB_TOKEN（composite 无法读 secrets，必须显式传入）'
+    required: true
+  comment-body:
+    description: '仅 run-command：评论正文'
+    default: ''
+  comment-user:
+    description: '仅 run-command：评论者 login'
+    default: ''
+  repo-owner:
+    description: '门禁比较对象'
+    default: ${{ github.repository_owner }}
+  issue-number:
+    description: '仅 run-command：命令面板 Issue 号'
+    default: '1'
+  registry-schema-version:
+    description: '跨仓 schema 防漂移；不匹配 → 失败'
+    default: '1'
+  keep:
+    description: '仅 cleanup：保留命令组数'
+    default: '10'
+  apply:
+    description: '仅 cleanup：必须显式 true 才真正删除（默认 dry-run）'
+    default: 'false'
+  version:
+    description: 'v1 二进制版本覆盖（仅自测用；v0 源码模式忽略）'
+    default: '0.1.0'
+
+outputs:
+  authorized:
+    description: '仅 run-command：权限门禁结果 true/false'
+    value: ${{ steps.run.outputs.authorized }}
+  changed:
+    description: '本次是否改动数据文件（决定调用方是否 commit）'
+    value: ${{ steps.run.outputs.changed }}
+  result:
+    description: '回帖正文（人类可读，多行）'
+    value: ${{ steps.run.outputs.result }}
+  warnings:
+    description: "build 的告警（单行化，%0A 分隔）"
+    value: ${{ steps.run.outputs.warnings }}
+
+runs:
+  using: composite
+  steps:
+    # ── v0：源码模式（无 release 前） ──────────────────────────
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: ${{ github.action_path }}/go.mod
+        cache-dependency-path: ${{ github.action_path }}/go.sum
+
+    - name: Run
+      id: run
+      shell: bash
+      env:
+        # 关键安全约定：用户输入只经 env 进入，绝不内插进 shell 命令行（SPEC-ACTION §4.2）
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        COMMENT_BODY: ${{ inputs.comment-body }}
+        COMMENT_USER: ${{ inputs.comment-user }}
+        REPO_OWNER: ${{ inputs.repo-owner }}
+        ISSUE_NUMBER: ${{ inputs.issue-number }}
+        USM_REGISTRY_SCHEMA: ${{ inputs.registry-schema-version }}
+        USM_KEEP: ${{ inputs.keep }}
+        USM_APPLY: ${{ inputs.apply }}
+        USM_ROOT: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        USM_ACTION_PATH="${{ github.action_path }}"
+
+        # 子命令白名单（未知值 exit 2；不拼接用户输入）
+        case "${{ inputs.command }}" in
+          run-command) CMD=(run-command) ;;
+          project)     CMD=(project) ;;
+          build)       CMD=(build) ;;
+          cleanup)     CMD=(cleanup --keep "$USM_KEEP")
+                       [ "$USM_APPLY" = "true" ] && CMD+=(--apply) || true ;;
+          doctor)      CMD=(doctor --check) ;;
+          *) echo "未知 command: ${{ inputs.command }}" >&2; exit 2 ;;
+        esac
+
+        rc=0
+        ( cd "$USM_ACTION_PATH" && go run ./cmd/usm "${CMD[@]}" --json ) > usm-out.json || rc=$?
+
+        # 始终解析已有输出（失败也要把 result 回传给调用方，便于失败回帖）
+        if [ -s usm-out.json ]; then
+          {
+            echo "changed=$(jq -r '.changed // false' usm-out.json)"
+            echo "authorized=$(jq -r '.authorized // true' usm-out.json)"
+            echo "warnings<<USM_EOF_$(date +%s)"
+            jq -r '.warnings | if type == "array" then join("\n") elif type == "string" then . else empty end' usm-out.json
+            echo "USM_EOF"
+            echo "result<<USM_EOF_$(date +%s)"
+            jq -r '.result // empty' usm-out.json
+            echo "USM_EOF"
+          } >> "$GITHUB_OUTPUT"
+        fi
+
+        if [ "$rc" -ne 0 ]; then
+          echo "usm 退出码 $rc" >&2
+          [ -s usm-out.json ] && jq -r 'if .errors then (.errors[] | "ERROR: \(.)") else empty end' usm-out.json >&2 || true
+          exit "$rc"
+        fi
+
+    # ── v1（release 后启用，接口不变；由 C4-2 切换） ─────────────
+    # - name: Fetch binary
+    #   shell: bash
+    #   run: |
+    #     set -euo pipefail
+    #     URL="https://github.com/${{ github.repository_owner }}/userscript-console/releases/download/v${{ inputs.version }}/usm-linux-amd64"
+    #     curl -fsSL -o "$RUNNER_TEMP/usm" "$URL"
+    #     echo "<sha256>  $RUNNER_TEMP/usm" | sha256sum -c -
+    #     chmod +x "$RUNNER_TEMP/usm"
