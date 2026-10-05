@@ -129,7 +129,8 @@ func TestRegisterDefaultPanic(t *testing.T) {
 }
 
 func TestRunNoGenerator(t *testing.T) {
-	// 确保 defaultGen 为 nil（测试隔离）
+	// 确保 defaultGen 为 nil（测试隔离）：前序测试可能已注册过生成器
+	defaultGen = nil
 	if code := Run(t.TempDir(), []string{"check"}); code != 1 {
 		t.Errorf("未注册生成器应 exit 1, got %d", code)
 	}
