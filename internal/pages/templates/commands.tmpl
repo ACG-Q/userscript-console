@@ -6,27 +6,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>命令归档 · {{.Command}}</title>
     <style>
-        :root { --bg: #fafafa; --card-bg: #fff; --border: #e0e0e0; --text: #333; --muted: #666; }
+        :root { --bg: #fafafa; --card-bg: #fff; --border: #e0e0e0; --text: #333; --muted: #666; --brand: #0969da; --brand-hover: #0860ca; --on-accent: #fff; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
         .container { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
-        h1 { margin-bottom: 1.5rem; }
-        .entry { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
-        .entry header { margin-bottom: 0.75rem; }
-        .entry h2 { font-size: 1.1rem; }
+        h1 { margin-bottom: 1.5rem; font-size: 1.5rem; }
+        .back { display: inline-block; margin-bottom: 1rem; font-size: 0.875rem; color: var(--brand); }
+        .back:hover { text-decoration: none; }
+        .stat-bar { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; padding: 0.5rem 1rem; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; }
+        .stat-bar .count { color: var(--muted); font-size: 0.875rem; }
+        .stat-bar .total { color: var(--brand); font-weight: 500; }
+        .entry { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; margin-bottom: 1.5rem; }
+        .entry header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
+        .entry h2 { font-size: 1.1rem; font-weight: 600; margin: 0; }
         .entry .meta { color: var(--muted); font-size: 0.875rem; }
-        .entry .body { margin-top: 0.5rem; white-space: pre-wrap; }
-        .pagination { display: flex; gap: 0.5rem; justify-content: center; margin-top: 2rem; }
-        .pagination a, .pagination span { padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 4px; text-decoration: none; }
-        .pagination .active { background: #1a73e8; color: #fff; border-color: #1a73e8; }
-        .back { display: inline-block; margin-bottom: 1rem; }
+        .entry .body { margin-top: 0.5rem; white-space: pre-wrap; word-break: break-all; }
+        .entry .body code { padding: 0.2rem 0.4rem; background: #f0f0f0; border-radius: 4px; font-family: ui-monospace, monospace; }
+        .pagination { display: flex; gap: 0.5rem; justify-content: center; align-items: center; margin-top: 1.5rem; flex-wrap: wrap; }
+        .pagination a, .pagination span { padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; text-decoration: none; color: var(--text); font-size: 0.875rem; }
+        .pagination a:hover { border-color: var(--brand); color: var(--brand); }
+        .pagination .prev, .pagination .next { flex: none; }
+        .pagination .active { background: var(--brand); color: var(--on-accent); border-color: var(--brand); }
+        .empty-state { padding: 2rem; text-align: center; color: var(--muted); }
     </style>
 </head>
 <body>
     <div class="container">
         <a class="back" href="{{.Base}}/commands">← 返回命令列表</a>
         <h1>命令归档: {{.Command}}</h1>
-        <p style="color:var(--muted)">共 {{.TotalItems}} 条结果，第 {{.Page}}/{{.TotalPages}} 页</p>
+        <div class="stat-bar">
+            <span class="count">共 <b>{{.TotalItems}}</b> 条结果</span>
+            <span class="total">第 {{.Page}}/{{.TotalPages}} 页</span>
+        </div>
+        {{if .Items}}
         {{range .Items}}
         <div class="entry">
             <header>
@@ -36,16 +48,16 @@
             <div class="body">{{.Body}}</div>
         </div>
         {{else}}
-        <p style="color:var(--muted)">暂无记录</p>
+        <p class="empty-state">暂无记录</p>
         {{end}}
         {{if gt .TotalPages 1}}
         <div class="pagination">
-            {{if gt .Page 1}}<a href="?page={{sub .Page 1}}">上一页</a>{{else}}<span>上一页</span>{{end}}
+            <a class="prev" href="?page={{sub .Page}}">上一页</a>
             {{range $i := seq .TotalPages}}
                 {{if eq (add $i 1) $.Page}}<span class="active">{{$i}}</span>
                 {{else}}<a href="?page={{$i}}">{{$i}}</a>{{end}}
             {{end}}
-            {{if lt .Page .TotalPages}}<a href="?page={{add .Page 1}}">下一页</a>{{else}}<span>下一页</span>{{end}}
+            <a class="next" href="?page={{add .Page}}">下一页</a>
         </div>
         {{end}}
     </div>

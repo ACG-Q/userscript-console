@@ -6,22 +6,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>命令归档</title>
     <style>
-        :root { --bg: #fafafa; --card-bg: #fff; --border: #e0e0e0; --text: #333; --muted: #666; }
+        :root { --bg: #fafafa; --card-bg: #fff; --border: #e0e0e0; --text: #333; --muted: #666; --brand: #0969da; --brand-hover: #0860ca; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
         .container { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
-        h1 { margin-bottom: 1.5rem; }
+        h1 { margin-bottom: 1.5rem; font-size: 1.5rem; }
+        .back { display: inline-block; margin-bottom: 1rem; font-size: 0.875rem; color: var(--brand); }
+        .back:hover { text-decoration: none; }
         .cmd-list { list-style: none; }
         .cmd-list li { margin-bottom: 0.5rem; }
-        .cmd-list a { display: block; padding: 0.75rem 1rem; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; text-decoration: none; color: var(--text); }
-        .cmd-list a:hover { border-color: #1a73e8; }
+        .cmd-list a { display: block; padding: 0.75rem 1rem; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; text-decoration: none; color: var(--text); transition: border-color 0.15s ease; }
+        .cmd-list a:hover { border-color: var(--brand); color: var(--brand); }
         .empty { color: var(--muted); padding: 2rem; text-align: center; }
-        .back { display: inline-block; margin-bottom: 1rem; }
     </style>
 </head>
 <body>
     <div class="container">
-        <a class="back" href="{{.Base}}/">← 返回首页</a>
+        <a class="back" href="{{.Base}}/commands">← 返回命令列表</a>
         <h1>命令归档</h1>
         {{if .Commands}}
         <ul class="cmd-list">
