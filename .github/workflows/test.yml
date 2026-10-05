@@ -28,9 +28,11 @@ jobs:
       - uses: actions/checkout@v5
 
       # 准备最小 registry.json 夹具（工具仓不持有数据，SPEC §5 自测要求）
+      # 使用 printf 避免 echo 的实现差异，显式指定 UTF-8 无 BOM
       - name: Prepare fixture registry
         run: |
-          echo '{"schema":1,"scripts":[]}' > registry.json
+          printf '{"schema":1,"scripts":[]}\n' > registry.json
+          cat registry.json | od -c | head -2  # 调试：确认无 BOM
 
       # 1. doctor --check（需 registry.json）
       - name: doctor
