@@ -97,9 +97,13 @@ jobs:
       - name: 测试 + 覆盖率
         run: |
           go test ./... -covermode=atomic -coverprofile=cover.out
+          go tool cover -func=cover.out
+          echo "--- total line ---"
           go tool cover -func=cover.out | tail -1
           pct=$(go tool cover -func=cover.out | tail -1 | grep -oE '[0-9.]+%' | tr -d '%')
+          echo "pct='$pct'"
           awk -v p="$pct" 'BEGIN{exit !(p>=90)}'
+          echo "coverage gate passed"
 
       - name: 快照基线
         run: go run ./cmd/usm snapshot check
