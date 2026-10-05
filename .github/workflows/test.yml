@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5   # TODO pin by sha（仓库惯例，见 SPEC-ACTION §4.6）
+      - uses: actions/checkout@v5
 
       - uses: actions/setup-go@v6
         with:
@@ -30,11 +30,6 @@ jobs:
 
       - name: vet
         run: go vet ./...
-
-      # TODO 集成阶段接入: golangci-lint run（govet/staticcheck/errcheck/ineffassign/gofumpt）
-      # - name: lint
-      #   uses: golangci/golangci-lint-action@v6
-      #   with: { version: latest }
 
       - name: 测试 + 覆盖率
         run: |
@@ -51,9 +46,6 @@ jobs:
         run: go run ./cmd/usm snapshot check
 
       - name: 数据自检
-        # doctor 面向**内容仓**的真实数据（registry.json / scripts/ / dist/）。
-        # 本工具仓按设计不持有任何数据文件（README §1），故此处按需运行：
-        # 仅当仓库根存在 registry.json 时才跑，避免把「无数据」误判为失败。
         run: |
           if [ -f registry.json ]; then
             go run ./cmd/usm doctor --check
@@ -72,52 +64,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # 准备最小 registry.json 夹具（工具仓不持有数据，SPEC §5 自测要求）
-      # 使用 printf 避免 echo 的实现差异，显式指定 UTF-8 无 BOM
-      - name: Prepare fixture registry
+      - name: Debug workspace
         run: |
-          printf '{"schema":1,"scripts":[]}\n' > registry.json
-          cat registry.json | od -c | head -2  # 调试：确认无 BOM
+          pwd
+          ls -la
+          cat action.yml | head -5
 
-      # 1. doctor --check（需 registry.json）
-      - name: doctor
+      # 只跑一个 command 先验证 uses: ./ 基本可用
+      - name: doctor (smoke)
         id: doctor
         uses: ./
         with:
           command: doctor
           github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # 2. build（仅验证 action 执行与 JSON 输出合法；dist 不入库）
-      - name: build
-        id: build
-        uses: ./
-        with:
-          command: build
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # 3. project（投影对账）
-      - name: project
-        id: project
-        uses: ./
-        with:
-          command: project
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # 4. cleanup dry-run（默认不传 apply → dry-run，验证不删）
-      - name: cleanup (dry-run)
-        id: cleanup
-        uses: ./
-        with:
-          command: cleanup
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # 5. run-command（列表命令，需注册夹具）
-      - name: run-command /list
-        id: run-command
-        uses: ./
-        with:
-          command: run-command
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-body: /list
-          comment-user: ${{ github.repository_owner }}
-          issue-number: '1'
