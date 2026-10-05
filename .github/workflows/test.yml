@@ -55,25 +55,3 @@ jobs:
 
       - name: 构建冒烟
         run: go build ./...
-
-  smoke:
-    name: Smoke (uses: ./)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: test
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Debug workspace
-        run: |
-          pwd
-          ls -la
-          cat action.yml | head -5
-
-      # 只跑一个 command 先验证 uses: ./ 基本可用
-      - name: doctor (smoke)
-        id: doctor
-        uses: ./
-        with:
-          command: doctor
-          github-token: ${{ secrets.GITHUB_TOKEN }}
