@@ -50,6 +50,21 @@ func Load(path string) (*Archive, error) {
 	return &a, nil
 }
 
+// archiveFile 是 Save 对临时文件的最小操作面。
+// 窄接口仅为测试注入写/刷/关/权限失败分支而存在——
+// 这些错误在真实文件系统上无法可靠构造（见 cleanup_edge_test.go）。
+type archiveFile interface {
+	Write(p []byte) (n int, err error)
+	Sync() error
+	Close() error
+	Name() string
+}
+
+// createArchiveTemp 是 os.CreateTemp 的窄接缝，默认实现不变。
+var createArchiveTemp = func(dir, pattern string) (archiveFile, error) {
+	return os.CreateTemp(dir, pattern)
+}
+
 // Save 原子写入归档文件。
 func Save(path string, a *Archive) error {
 	dir := filepath.Dir(path)
@@ -61,7 +76,7 @@ func Save(path string, a *Archive) error {
 		return fmt.Errorf("序列化归档失败: %w", err)
 	}
 	data = bytes.TrimRight(data, "\n")
-	tmp, err := os.CreateTemp(dir, ".archive-*.tmp")
+	tmp, err := createArchiveTemp(dir, ".archive-*.tmp")
 	if err != nil {
 		return fmt.Errorf("创建临时文件失败: %w", err)
 	}
