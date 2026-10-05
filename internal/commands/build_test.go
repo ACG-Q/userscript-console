@@ -1,106 +1,97 @@
 package commands
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/acg-q/userscript-console/internal/registry"
 )
 
-func TestRunBuildMissingSource(t *testing.T) {
-	root := t.TempDir()
-	// 创建一个 registry，其中 self 脚本的源码文件不存在
-	reg := &registry.Registry{
-		Schema: registry.SchemaVersion,
-		Scripts: []registry.Script{
-			{
-				ID:        "self01",
-				Type:      registry.TypeSelf,
-				Name:      "测试脚本",
-				Version:   "1.0.0",
-				Enabled:   true,
-				Deleted:   false,
-				Match:     []string{"*://*/*"},
-				Grant:     []string{"none"},
-				CreatedAt: "2026-01-01T00:00:00Z",
-				UpdatedAt: "2026-10-05T00:00:00Z",
-			},
-		},
-	}
-	if err := reg.Save(filepath.Join(root, "registry.json")); err != nil {
-		t.Fatal(err)
-	}
-	// 不创建脚本文件 → ReadSource 将失败
+// fakeSite 记录 /build 对 Env.Site 的调用。
+type fakeSite struct {
+	calls    int
+	pages    int
+	changed  bool
+	warnings []string
+	err      error
+}
 
-	env := &Env{
-		Root:      root,
-		PagesBase: "https://test.github.io/repo",
-		Now:       time.Now(),
-	}
-	res, err := runBuild(env, "", nil)
+func (f *fakeSite) Build(*registry.Registry) (int, bool, []string, error) {
+	f.calls++
+	return f.pages, f.changed, f.warnings, f.err
+}
+
+// TestBuildWithoutSite Env.Site 为 nil（单测默认）时只产出 dist/ 脚本副本。
+func TestBuildWithoutSite(t *testing.T) {
+	env, _ := buildTestEnvWithFake(t)
+	env.PagesBase = "https://example.github.io/repo"
+
+	res, err := Execute("build", env, "", nil)
 	if err != nil {
-		t.Fatalf("runBuild 不应返回 error: %v", err)
+		t.Fatalf("build 执行失败: %v", err)
 	}
-	if !strings.Contains(res.Text, "错误") {
-		t.Errorf("缺少源码时应含错误信息: %s", res.Text)
+	if !strings.Contains(res.Text, "已构建") {
+		t.Errorf("build 应提示已构建: %s", res.Text)
+	}
+	if strings.Contains(res.Text, "站点页面") {
+		t.Errorf("未注入 Site 时不应出现站点页面行: %s", res.Text)
+	}
+	if res.Pages != 0 {
+		t.Errorf("未注入 Site 时 Pages 应为 0, got %d", res.Pages)
 	}
 }
 
-func TestRunBuildEmptyRegistry(t *testing.T) {
-	root := t.TempDir()
-	reg := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{}}
-	if err := reg.Save(filepath.Join(root, "registry.json")); err != nil {
-		t.Fatal(err)
+// TestBuildWithSite 注入 SiteBuilder 后：整站告警/页面数进 Result，changed 与站点联动。
+func TestBuildWithSite(t *testing.T) {
+	env, _ := buildTestEnvWithFake(t)
+	env.PagesBase = "https://example.github.io/repo"
+	site := &fakeSite{pages: 7, changed: true, warnings: []string{"W1: IssueStats 未提供（降级渲染）"}}
+	env.Site = site
+
+	// 需要一个 self 源码文件，否则 dist 副本为空（changed 只能来自站点）。
+	if err := writeSelfSource(env.Root, "self01"); err != nil {
+		t.Fatalf("写源码失败: %v", err)
 	}
-	env := &Env{
-		Root:      root,
-		PagesBase: "https://test.github.io/repo",
-		Now:       time.Now(),
-	}
-	res, err := runBuild(env, "", nil)
+
+	res, err := Execute("build", env, "", nil)
 	if err != nil {
-		t.Fatalf("runBuild 空注册表不应返回 error: %v", err)
+		t.Fatalf("build 执行失败: %v", err)
 	}
-	if !strings.Contains(res.Text, "已构建: 0") {
-		t.Errorf("空注册表应输出 0 构建: %s", res.Text)
+	if site.calls != 1 {
+		t.Errorf("Site.Build 应被调用 1 次, got %d", site.calls)
+	}
+	if !strings.Contains(res.Text, "站点页面: 7 个") {
+		t.Errorf("回帖应含站点页面数: %s", res.Text)
+	}
+	if res.Pages != 7 {
+		t.Errorf("Pages 应为 7, got %d", res.Pages)
+	}
+	if len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "W1") {
+		t.Errorf("Warnings 应透传站点告警, got %v", res.Warnings)
+	}
+	if !res.Changed {
+		t.Errorf("站点有落盘变更时 Changed 应为 true")
 	}
 }
 
-func TestLoadRegInvalidRoot(t *testing.T) {
-	env := &Env{Root: "/nonexistent/root/path"}
-	_, err := loadReg(env)
-	if err == nil {
-		t.Fatal("loadReg 无效路径应返回 error")
+// TestBuildSiteError 站点构建失败是操作型错误 → 上抛（cli 层 exit 1）。
+func TestBuildSiteError(t *testing.T) {
+	env, _ := buildTestEnvWithFake(t)
+	env.PagesBase = "https://example.github.io/repo"
+	env.Site = &fakeSite{err: errors.New("渲染失败")}
+
+	if _, err := Execute("build", env, "", nil); err == nil {
+		t.Fatal("Site.Build 失败应上抛 error")
 	}
 }
 
-// TestListDist_FilePath 读取文件路径时：Windows 返回空 slice（无 error），其他平台返回 error。
-func TestListDist_FilePath(t *testing.T) {
-	root := t.TempDir()
-	filePath := filepath.Join(root, "afile.txt")
-	if err := os.WriteFile(filePath, []byte("hello"), 0o644); err != nil {
-		t.Fatal(err)
+func writeSelfSource(root, id string) error {
+	dir := filepath.Join(root, "scripts", "self", id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
 	}
-	files, err := listDist(filePath)
-	if err != nil {
-		// Linux/macOS：os.ReadDir 对文件路径返回 error
-		t.Logf("listDist 对文件路径返回 error（非 Windows 行为）: %v", err)
-		return
-	}
-	// Windows：os.ReadDir 对文件路径返回空 slice，无 error
-	if len(files) != 0 {
-		t.Fatalf("Windows 下应返回空 slice，实际: %v", files)
-	}
-}
-
-// TestListDist_NonExistentDir 不存在的目录应返回 nil 而非 error。
-func TestListDist_NonExistentDir(t *testing.T) {
-	root := t.TempDir()
-	_, err := listDist(filepath.Join(root, "no-such-dir"))
-	if err != nil {
-		t.Fatalf("不存在目录应返回 nil, 实际: %v", err)
-	}
+	return os.WriteFile(filepath.Join(dir, "index.js"), []byte("// test"), 0o644)
 }

@@ -3,7 +3,6 @@ package commands
 import (
 	"strings"
 
-	"github.com/acg-q/userscript-console/internal/issuepage"
 	"github.com/acg-q/userscript-console/internal/registry"
 	"github.com/acg-q/userscript-console/internal/script"
 )
@@ -41,11 +40,6 @@ func runRm(env *Env, args string, codeBlocks []string) (Result, error) {
 	// 软删除：设置 Deleted=true，保持其他字段不变
 	s.Deleted = true
 	s.UpdatedAt = rfc3339(nowOf(env))
-
-	// 如果有关联 Issue，更新为墓碑
-	if s.Issue != nil && env.RepoOwner != "" {
-		_ = issuepage.TombstoneBody(*s)
-	}
 
 	changed, err := saveReg(env, r)
 	if err != nil {

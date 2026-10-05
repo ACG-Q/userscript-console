@@ -1,0 +1,108 @@
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>示例自写脚本 · v1.2.0</title>
+    <style>
+        :root { --bg: #fafafa; --card-bg: #fff; --border: #e0e0e0; --text: #333; --muted: #666; --accent: #1a73e8; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
+        h1 { margin-bottom: 0.5rem; }
+        .meta { color: var(--muted); margin-bottom: 1.5rem; }
+        .section { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; }
+        .section h2 { font-size: 1.1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+        table { width: 100%; border-collapse: collapse; }
+        td, th { padding: 0.5rem; border: 1px solid var(--border); text-align: left; }
+        th { background: #f5f5f5; }
+        .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 4px; text-decoration: none; font-size: 0.9rem; }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-secondary { background: #f1f3f4; color: var(--text); }
+        .tombstone { border-color: #c5221f; background: #fce8e6; }
+        .tab { display: inline-block; padding: 0.5rem 1rem; cursor: pointer; border-bottom: 2px solid transparent; }
+        .tab.active { border-bottom-color: var(--accent); color: var(--accent); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>示例自写脚本 <small>v1.2.0</small></h1>
+        <div class="meta">
+            已启用
+            · self · ID: 11111111-2222-4333-8444-555555555555
+        </div>
+
+        <div class="section ">
+            <h2>安装规则</h2>
+            
+            <table>
+                <tr><th>#</th><th>规则</th></tr>
+                <tr><td>0</td><td>*://*/*</td></tr><tr><td>1</td><td>https://example.com/*</td></tr>
+            </table>
+            
+        </div>
+
+        
+        <div class="section">
+            <h2>权限</h2>
+            <ul>
+                <li>none</li>
+            </ul>
+        </div>
+        
+
+        
+        <div class="section">
+            <h2>更新日志</h2>
+            <table>
+                <tr><th>版本</th><th>日期</th><th>说明</th></tr>
+                <tr><td>1.2.0</td><td>2026-10-05</td><td>修复|管道转义 与 换行</td></tr><tr><td>1.1.0</td><td>2026-10-03</td><td>新增功能</td></tr>
+            </table>
+        </div>
+        
+
+        
+        <div class="section">
+            <h2>版本讨论</h2>
+            <div id="discTabs">
+                
+                <span class="tab active" data-tab="0">v1.2.0</span>
+                
+            </div>
+            
+            <div class="tab-content active" id="tab-0">
+                <p><a href="https://github.com/acg-q/userscript-manager/discussions/12">查看原版讨论帖</a></p>
+                
+                <p style="color:var(--muted)">暂无评论</p>
+                
+            </div>
+            
+            <script>
+            (function(){
+                var tabs = document.querySelectorAll('#discTabs .tab');
+                var contents = document.querySelectorAll('.tab-content');
+                tabs.forEach(function(t, i) {
+                    t.onclick = function() {
+                        tabs.forEach(function(x){x.classList.remove('active')});
+                        contents.forEach(function(x){x.classList.remove('active')});
+                        t.classList.add('active');
+                        contents[i].classList.add('active');
+                    };
+                });
+            })();
+            </script>
+        </div>
+        
+
+        
+        <div class="section">
+            <a class="btn btn-primary" href="https://acg-q.github.io/userscript-console/dist/11111111-2222-4333-8444-555555555555.user.js">下载脚本</a>
+            <a class="btn btn-secondary" href="/">返回首页</a>
+        </div>
+        
+    </div>
+</body>
+</html>

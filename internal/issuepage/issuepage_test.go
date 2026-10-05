@@ -135,10 +135,14 @@ func TestBuildBody首行与回读(t *testing.T) {
 
 func TestBuildBody确定性(t *testing.T) {
 	s := sampleScript()
-	if BuildBody(s) != BuildBody(s) {
+	// 分别绑定两次调用结果，避免 SA4000（同表达式比较）同时保留 I-1 语义：
+	// 同一输入两次生成必须逐字节一致。
+	body1, body2 := BuildBody(s), BuildBody(s)
+	if body1 != body2 {
 		t.Error("两次调用输出不一致（I-1）")
 	}
-	if BuildTitle(s) != BuildTitle(s) {
+	title1, title2 := BuildTitle(s), BuildTitle(s)
+	if title1 != title2 {
 		t.Error("标题非确定性")
 	}
 }

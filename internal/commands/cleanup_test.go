@@ -46,7 +46,7 @@ func TestCleanupWithApplyAndDelete(t *testing.T) {
 	os.WriteFile(regPath, data, 0o644)
 
 	// 写入旧归档（含 2 条过期评论）
-	archiveDir := filepath.Join(root, "..", "archive")
+	archiveDir := filepath.Join(root, "archive")
 	os.MkdirAll(archiveDir, 0o755)
 	archivePath := filepath.Join(archiveDir, "commands.json")
 	oldArchive := &cleanup.Archive{
@@ -114,6 +114,12 @@ func TestCleanupWithApplyAndDelete(t *testing.T) {
 	}
 	if !strings.Contains(res.Text, "已删除评论: 2") {
 		t.Logf("实际输出: %s", res.Text)
+	}
+
+	// 回归：归档必须落在数据根 <root>/archive/commands.json，
+	// 与 doctor（cli.doctorProblems）和 pages.renderCommands 的读取路径一致。
+	if _, err := os.Stat(filepath.Join(root, "archive", "commands.json")); err != nil {
+		t.Errorf("归档应写入 <root>/archive/commands.json: %v", err)
 	}
 }
 

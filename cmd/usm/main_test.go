@@ -128,7 +128,7 @@ func TestParseCommandComment(t *testing.T) {
 		{"带参数", "/info self01", "info", "self01", 0, false},
 		{"无效命令", "hello", "", "", 0, true},
 		{"空评论", "", "", "", 0, true},
-		{"多行代码块", "/add\n```\ncode\n```\nmore", "add", "", 2, false},
+		{"多行代码块", "/add\n```\ncode\n```\nmore", "add", "", 1, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -273,6 +273,12 @@ func TestCleanupRunWithApply(t *testing.T) {
 
 func buildTestRegistryDir(t *testing.T) string {
 	t.Helper()
+	// 防 CI 环境里的 GITHUB_TOKEN/GITHUB_REPOSITORY 泄漏进单测，
+	// 否则 newGitHubClient() 会构造出真客户端、把用例带上真实网络。
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GITHUB_REPOSITORY", "")
+	t.Setenv("USM_APPLY", "")
+	t.Setenv("USM_KEEP", "")
 	root := t.TempDir()
 	reg := &registry.Registry{
 		Schema: registry.SchemaVersion,

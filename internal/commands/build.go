@@ -58,6 +58,18 @@ func runBuild(env *Env, args string, codeBlocks []string) (Result, error) {
 		built++
 	}
 
+	// 整站生成：Env.Site 为 nil（单测/无站点场景）时只产出 dist/ 脚本副本。
+	sitePages := 0
+	siteChanged := false
+	var siteWarnings []string
+	if env.Site != nil {
+		p, c, warns, err := env.Site.Build(r)
+		if err != nil {
+			return Result{}, fmt.Errorf("构建站点失败: %w", err)
+		}
+		sitePages, siteChanged, siteWarnings = p, c, warns
+	}
+
 	msg := fmt.Sprintf("✅ 构建完成：\n\n"+
 		"- 已构建: %d 个脚本\n"+
 		"- 已跳过: %d 个（已删除或非 self 类型）\n",
@@ -67,11 +79,19 @@ func runBuild(env *Env, args string, codeBlocks []string) (Result, error) {
 		msg += fmt.Sprintf("- 错误: %d 个\n", errs)
 	}
 
-	if env.PagesBase != "" {
-		msg += fmt.Sprintf("\n📦 站点基址: %s/dist/\n", env.PagesBase)
+	if env.Site != nil {
+		msg += fmt.Sprintf("- 站点页面: %d 个\n", sitePages)
 	}
 
-	return reply(built > 0, "%s", msg)
+	msg += fmt.Sprintf("\n📦 站点基址: %s/dist/\n", env.PagesBase)
+
+	res, err := reply(built > 0 || siteChanged, "%s", msg)
+	if err != nil {
+		return res, err
+	}
+	res.Warnings = siteWarnings
+	res.Pages = sitePages
+	return res, nil
 }
 
 // listDist 列出 dist/ 目录内容。

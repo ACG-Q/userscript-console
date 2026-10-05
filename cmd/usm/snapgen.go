@@ -3,18 +3,27 @@ package main
 import (
 	"fmt"
 	"path"
+	"path/filepath"
 	"sort"
+	"strings"
+	"time"
 
 	"github.com/acg-q/userscript-console/internal/issuepage"
+	"github.com/acg-q/userscript-console/internal/pages"
 	"github.com/acg-q/userscript-console/internal/registry"
 	"github.com/acg-q/userscript-console/internal/snapshot"
 )
 
 // 快照生成器（snapshot.RegisterDefault）：输入 = tests/corpus/inputs/registry.json，
-// 输出 = 投影标题/正文/墓碑/版本帖 + registry 规范形态。
-// 站点整页快照在 pages 包接线后追加（site/ 目录）。
+// 输出 = 投影标题/正文/墓碑/版本帖 + registry 规范形态 + 站点整页（site/）。
 
 const corpusPath = "tests/corpus/inputs/registry.json"
+
+// 站点快照的确定性参数（相对时间/链接都随这两个值变化，必须钉死）。
+var (
+	siteSnapshotBase = "https://acg-q.github.io/userscript-console"
+	siteSnapshotNow  = time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+)
 
 func init() {
 	snapshot.RegisterDefault(buildSnapshotFiles)
@@ -51,6 +60,47 @@ func buildSnapshotFiles() (map[string]string, error) {
 			v := s.Discussions[len(s.Discussions)-1].Version // 账本末条 = 当前版本帖
 			files[base+"-discussion.md"] = issuepage.DiscussionBody(s, v)
 		}
+	}
+
+	site, err := buildSiteSnapshot(reg)
+	if err != nil {
+		return nil, err
+	}
+	for name, content := range site {
+		files[name] = content
+	}
+	return files, nil
+}
+
+// buildSiteSnapshot 生成整站快照（index/scripts.json/详情页/告警）。
+//
+// Out 指到 tests/snapshot/site 只是为了让 archive 探测路径
+// （pages.renderCommands 读 <Out 的父目录>/archive/commands.json）落在
+// 永远不存在的 tests/snapshot/archive/ 下 —— 否则本机残留的 archive/
+// 会让快照因环境而异。Build 本身不写盘，这里的 Out 只影响该探测。
+func buildSiteSnapshot(reg *registry.Registry) (map[string]string, error) {
+	out, err := pages.Build(reg, pages.Options{
+		Out:       filepath.Join("tests", "snapshot", "site"),
+		PagesBase: siteSnapshotBase,
+		Now:       siteSnapshotNow,
+	}, pages.Data{})
+	if err != nil {
+		return nil, fmt.Errorf("生成站点快照: %w", err)
+	}
+
+	files := map[string]string{
+		"site/index.html":         out.IndexHTML,
+		"site/scripts.json":       out.ScriptsJSON,
+		"site/build-warnings.txt": strings.Join(out.BuildWarnings, "\n"),
+	}
+	for id, html := range out.DetailHTMLs {
+		files[path.Join("site", "scripts", id+".html")] = html
+	}
+	for n, html := range out.CommandPages {
+		files[fmt.Sprintf("site/commands/page-%d.html", n)] = html
+	}
+	if out.CommandsIndex != "" {
+		files["site/commands/index.html"] = out.CommandsIndex
 	}
 	return files, nil
 }

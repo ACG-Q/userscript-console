@@ -36,6 +36,17 @@ const registryFileName = "registry.json"
 
 // ── 契约类型 ────────────────────────────────────────────────
 
+// SiteBuilder 整站生成器，由 cli 层（cmd/usm）注入。
+//
+// SPEC-ARCH-TEST §1：internal/commands 不得反向 import internal/pages，
+// 所以 /build 的整站生成走接口；Env.Site 为 nil → 只产出 dist/ 脚本副本
+// （单测与不需要站点的场景），整站降级为可选项。
+type SiteBuilder interface {
+	// Build 渲染并落盘整站产物。
+	// 返回页面数、是否发生文件变更、渲染/抓取告警。
+	Build(reg *registry.Registry) (pages int, changed bool, warnings []string, err error)
+}
+
 // Env 由 cli 层构造（测试直接构造）。零值字段按各命令的兜底语义处理。
 type Env struct {
 	Root            string // 数据根（含 registry.json）
@@ -48,13 +59,16 @@ type Env struct {
 	AuthorNamespace string // 自写脚本头默认命名空间
 	Doer            sources.Doer
 	GHClient        *github.Client // GitHub GraphQL 客户端；nil → 跳过 GitHub 操作
+	Site            SiteBuilder    // 整站生成器；nil → /build 只产出 dist/ 脚本副本
 	Now             time.Time      // I-7 可注入；零值 → time.Now()
 }
 
 // Result 回帖结果。
 type Result struct {
-	Text    string // 回帖正文（Markdown，中文）
-	Changed bool   // 本次是否写入 registry/scripts/dist 任一文件
+	Text     string   // 回帖正文（Markdown，中文）
+	Changed  bool     // 本次是否写入 registry/scripts/dist 任一文件
+	Warnings []string // 降级/告警信息（action.yml 的 warnings 输出；nil = 无告警）
+	Pages    int      // build 产出的站点页面数（SPEC-CLI §3）
 }
 
 // Handler 一个命令的执行体。

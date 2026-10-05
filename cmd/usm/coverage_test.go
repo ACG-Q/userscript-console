@@ -1,9 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
+
+	"github.com/acg-q/userscript-console/internal/registry"
 )
 
 // TestRunCommandMissingFlags 三个必填参数缺失时各返回 2。
@@ -177,9 +182,9 @@ func TestParseIssueNumberErrors(t *testing.T) {
 	}
 }
 
-// TestParseCommandCommentCodeBlocks 代码块标记应被提取。
+// TestParseCommandCommentCodeBlocks 围栏代码块按内容提取（不含围栏行）。
 func TestParseCommandCommentCodeBlocks(t *testing.T) {
-	body := "/add https://example.com\n```js\n```"
+	body := "/add https://example.com\n```js\nconst a = 1;\n```"
 	cmd, args, codes, err := parseCommandComment(body)
 	if err != nil {
 		t.Fatalf("解析应成功: %v", err)
@@ -190,9 +195,25 @@ func TestParseCommandCommentCodeBlocks(t *testing.T) {
 	if args != "https://example.com" {
 		t.Errorf("参数应有 URL, got %q", args)
 	}
-	// 实现按行匹配 ``` 前缀，开闭标记各产生一条
-	if len(codes) != 2 {
-		t.Errorf("应提取 2 个代码块标记行, got %#v", codes)
+	// 旧实现按行匹配 ``` 前缀，把开闭标记行当成两个"代码块"；
+	// parser 提取的是围栏内容 —— /add 正是靠它拿到源码。
+	if len(codes) != 1 {
+		t.Fatalf("应提取 1 个代码块, got %#v", codes)
+	}
+	if codes[0] != "const a = 1;" {
+		t.Errorf("代码块内容应为源码, got %q", codes[0])
+	}
+}
+
+// TestParseCommandCommentTildeFence parser 支持 ~~~ 围栏（旧实现不认）。
+func TestParseCommandCommentTildeFence(t *testing.T) {
+	body := "/add https://example.com\n~~~\nconst b = 2;\n~~~"
+	_, _, codes, err := parseCommandComment(body)
+	if err != nil {
+		t.Fatalf("解析应成功: %v", err)
+	}
+	if len(codes) != 1 || codes[0] != "const b = 2;" {
+		t.Errorf("~~~ 围栏应提取为一个代码块, got %#v", codes)
 	}
 }
 
@@ -242,6 +263,274 @@ func TestCleanupRunApplyFlag(t *testing.T) {
 	root := buildTestRegistryDir(t)
 	if code := cleanupRun([]string{"--root", root, "--apply"}); code != 0 {
 		t.Errorf("cleanup --apply 应返回 0, got %d", code)
+	}
+}
+
+// TestCleanupRunApplyNotDryRun 回归：--apply 曾被折叠成 "true" 传参，
+// parseCleanupFlags 找 "--apply" 子串恒失败 → 永远 dry-run。
+func TestCleanupRunApplyNotDryRun(t *testing.T) {
+	t.Setenv("USM_APPLY", "")
+	t.Setenv("USM_KEEP", "")
+	root := buildTestRegistryDir(t)
+
+	dry := captureStdout(t, func() {
+		if code := cleanupRun([]string{"--root", root}); code != 0 {
+			t.Errorf("cleanup 默认应返回 0, got %d", code)
+		}
+	})
+	if !strings.Contains(dry, "dry-run") {
+		t.Errorf("默认应为 dry-run: %s", dry)
+	}
+
+	applied := captureStdout(t, func() {
+		if code := cleanupRun([]string{"--root", root, "--apply"}); code != 0 {
+			t.Errorf("cleanup --apply 应返回 0, got %d", code)
+		}
+	})
+	if strings.Contains(applied, "dry-run") {
+		t.Errorf("--apply 不应再提示 dry-run: %s", applied)
+	}
+	if !strings.Contains(applied, "cleanup 完成") {
+		t.Errorf("--apply 应输出清理完成: %s", applied)
+	}
+}
+
+// TestCleanupArgsForwardsFlags cleanupArgs 必须原样转发 --apply/--keep，
+// 并丢弃与 parseCleanupFlags 无关的 --root/--json。
+func TestCleanupArgsForwardsFlags(t *testing.T) {
+	t.Setenv("USM_APPLY", "")
+	t.Setenv("USM_KEEP", "")
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"无 flag", []string{"--root", "/x", "--json"}, ""},
+		{"--apply", []string{"--root", "/x", "--apply"}, "--apply"},
+		{"--keep 空格", []string{"--keep", "3", "--json"}, "--keep=3"},
+		{"--keep 等号", []string{"--keep=7"}, "--keep=7"},
+		{"组合", []string{"--root", "/x", "--keep", "5", "--apply", "--json"}, "--apply --keep=5"},
+		{"非法 keep", []string{"--keep=abc"}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := cleanupArgs(c.args); got != c.want {
+				t.Errorf("cleanupArgs(%v) = %q, want %q", c.args, got, c.want)
+			}
+		})
+	}
+}
+
+// TestCleanupArgsEnvFallback flag 缺失时回落 USM_APPLY/USM_KEEP。
+func TestCleanupArgsEnvFallback(t *testing.T) {
+	t.Setenv("USM_APPLY", "true")
+	t.Setenv("USM_KEEP", "4")
+	if got := cleanupArgs([]string{"--json"}); got != "--apply --keep=4" {
+		t.Errorf("env 兜底应为 --apply --keep=4, got %q", got)
+	}
+	if got := cleanupArgs([]string{"--apply", "--keep=9"}); got != "--apply --keep=9" {
+		t.Errorf("flag 应优先于 env, got %q", got)
+	}
+}
+
+// TestNewGitHubClient token/repo 齐备才返回客户端，缺任一或格式非法都降级 nil。
+func TestNewGitHubClient(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GITHUB_REPOSITORY", "")
+	if c := newGitHubClient(); c != nil {
+		t.Error("双缺失时应返回 nil")
+	}
+
+	t.Setenv("GITHUB_TOKEN", "tok")
+	if c := newGitHubClient(); c != nil {
+		t.Error("缺 GITHUB_REPOSITORY 时应返回 nil")
+	}
+
+	t.Setenv("GITHUB_REPOSITORY", "owner/repo")
+	if c := newGitHubClient(); c == nil {
+		t.Error("token+repo 齐备时应返回客户端")
+	}
+
+	t.Setenv("GITHUB_REPOSITORY", "not-a-repo")
+	if c := newGitHubClient(); c != nil {
+		t.Error("repo 缺少 owner/name 分隔符时应返回 nil")
+	}
+}
+
+// TestRunCommandEnvOnly action.yml 只经 env 传参（防注入）：
+// 不给任何 flag 时必须能取到 COMMENT_BODY/COMMENT_USER/ISSUE_NUMBER。
+func TestRunCommandEnvOnly(t *testing.T) {
+	root := buildTestRegistryDir(t)
+	t.Setenv("USM_ROOT", root)
+	t.Setenv("COMMENT_BODY", "/list")
+	t.Setenv("COMMENT_USER", "testuser")
+	t.Setenv("ISSUE_NUMBER", "1")
+	t.Setenv("REPO_OWNER", "")
+
+	out := captureStdout(t, func() {
+		if code := runCommandRun(nil); code != 0 {
+			t.Errorf("env-only run-command 应返回 0, got %d", code)
+		}
+	})
+	if !strings.Contains(out, "测试") && !strings.Contains(out, "list") {
+		t.Errorf("env-only 应执行 /list 并回帖: %s", out)
+	}
+}
+
+// TestRunCommandGateNonPanelIssue 门禁 1：非命令面板 Issue 不执行、exit 0、
+// authorized=false（SPEC-CLI §1 判定顺序第 1 步）。
+func TestRunCommandGateNonPanelIssue(t *testing.T) {
+	root := buildTestRegistryDir(t)
+	t.Setenv("USM_ROOT", root)
+
+	var payload map[string]any
+	out := captureStdout(t, func() {
+		code := runCommandRun([]string{
+			"--comment-body=/list", "--comment-user=u", "--issue-number=7", "--json",
+		})
+		if code != 0 {
+			t.Errorf("非面板 Issue 应 exit 0, got %d", code)
+		}
+	})
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("门禁输出必须是合法 JSON: %v\n%q", err, out)
+	}
+	if payload["authorized"] != false {
+		t.Errorf("authorized 应为 false, got %v", payload["authorized"])
+	}
+	if payload["changed"] != false {
+		t.Errorf("changed 应为 false, got %v", payload["changed"])
+	}
+	if res, _ := payload["result"].(string); !strings.Contains(res, "非命令面板 Issue #7") {
+		t.Errorf("回帖应说明非面板 Issue: %q", res)
+	}
+}
+
+// TestRunCommandGateNotOwner 门禁 2：评论者不是仓库所有者 → 不执行、
+// exit 0、authorized=false。
+func TestRunCommandGateNotOwner(t *testing.T) {
+	root := buildTestRegistryDir(t)
+	t.Setenv("USM_ROOT", root)
+
+	var payload map[string]any
+	out := captureStdout(t, func() {
+		code := runCommandRun([]string{
+			"--comment-body=/list", "--comment-user=someone",
+			"--issue-number=1", "--repo-owner=the-owner", "--json",
+		})
+		if code != 0 {
+			t.Errorf("权限不足应 exit 0, got %d", code)
+		}
+	})
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("门禁输出必须是合法 JSON: %v\n%q", err, out)
+	}
+	if payload["authorized"] != false {
+		t.Errorf("authorized 应为 false, got %v", payload["authorized"])
+	}
+	res, _ := payload["result"].(string)
+	if !strings.Contains(res, "权限不足") || !strings.Contains(res, "the-owner") {
+		t.Errorf("回帖应说明权限不足与所有者: %q", res)
+	}
+}
+
+// TestRunCommandOwnerAuthorized 门禁通过时 authorized=true 且命令真的执行。
+func TestRunCommandOwnerAuthorized(t *testing.T) {
+	root := buildTestRegistryDir(t)
+	t.Setenv("USM_ROOT", root)
+
+	var payload map[string]any
+	out := captureStdout(t, func() {
+		code := runCommandRun([]string{
+			"--comment-body=/list", "--comment-user=the-owner",
+			"--issue-number=1", "--repo-owner=the-owner", "--json",
+		})
+		if code != 0 {
+			t.Errorf("所有者评论应 exit 0, got %d", code)
+		}
+	})
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("输出必须是合法 JSON: %v\n%q", err, out)
+	}
+	if payload["authorized"] != true {
+		t.Errorf("authorized 应为 true, got %v", payload["authorized"])
+	}
+	res, _ := payload["result"].(string)
+	if strings.Contains(res, "权限不足") {
+		t.Errorf("所有者不应被拦: %q", res)
+	}
+}
+
+// TestRunSchemaGuard USM_REGISTRY_SCHEMA 只校验触碰 registry 的子命令：
+// 匹配/未设置 → 放行；不匹配或非数字 → exit 1；version 不受校验。
+func TestRunSchemaGuard(t *testing.T) {
+	clearCommentEnv := func(t *testing.T) {
+		t.Helper()
+		t.Setenv("COMMENT_BODY", "")
+		t.Setenv("COMMENT_USER", "")
+		t.Setenv("ISSUE_NUMBER", "")
+	}
+
+	t.Run("匹配则放行", func(t *testing.T) {
+		clearCommentEnv(t)
+		t.Setenv("USM_REGISTRY_SCHEMA", strconv.Itoa(registry.SchemaVersion))
+		if code := run([]string{"run-command"}); code != 2 {
+			t.Errorf("schema 匹配时应走到参数校验 exit 2, got %d", code)
+		}
+	})
+
+	t.Run("未设置则跳过", func(t *testing.T) {
+		clearCommentEnv(t)
+		t.Setenv("USM_REGISTRY_SCHEMA", "")
+		if code := run([]string{"run-command"}); code != 2 {
+			t.Errorf("未设置 schema 应跳过校验, got %d", code)
+		}
+	})
+
+	t.Run("版本不匹配 exit 1", func(t *testing.T) {
+		clearCommentEnv(t)
+		t.Setenv("USM_REGISTRY_SCHEMA", strconv.Itoa(registry.SchemaVersion+1))
+		if code := run([]string{"run-command"}); code != 1 {
+			t.Errorf("schema 不匹配应 exit 1, got %d", code)
+		}
+	})
+
+	t.Run("非数字拒绝", func(t *testing.T) {
+		clearCommentEnv(t)
+		t.Setenv("USM_REGISTRY_SCHEMA", "abc")
+		if code := run([]string{"project"}); code != 1 {
+			t.Errorf("非数字 schema 应 exit 1, got %d", code)
+		}
+	})
+
+	t.Run("version 不受校验", func(t *testing.T) {
+		t.Setenv("USM_REGISTRY_SCHEMA", "999")
+		if code := run([]string{"version"}); code != 0 {
+			t.Errorf("version 应 exit 0, got %d", code)
+		}
+	})
+}
+
+// TestRunSchemaMismatchJSON --json 下 schema 不匹配仍须输出合法 JSON，
+// 否则 action.yml 的 jq/heredoc 会连带失败。
+func TestRunSchemaMismatchJSON(t *testing.T) {
+	t.Setenv("USM_REGISTRY_SCHEMA", "999")
+
+	var payload map[string]any
+	out := captureStdout(t, func() {
+		if code := run([]string{"doctor", "--json"}); code != 1 {
+			t.Errorf("schema 不匹配应 exit 1, got %d", code)
+		}
+	})
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("schema 错误必须输出合法 JSON: %v\n%q", err, out)
+	}
+	if payload["authorized"] != false {
+		t.Errorf("authorized 应为 false, got %v", payload["authorized"])
+	}
+	res, _ := payload["result"].(string)
+	if !strings.Contains(res, "registry schema 不匹配") {
+		t.Errorf("回帖应说明 schema 不匹配: %q", res)
 	}
 }
 

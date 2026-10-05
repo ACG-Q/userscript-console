@@ -1,0 +1,71 @@
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Userscript Console</title>
+    <style>
+        :root { --bg: #fafafa; --card-bg: #fff; --border: #e0e0e0; --text: #333; --muted: #666; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+        .container { max-width: 960px; margin: 0 auto; padding: 2rem 1rem; }
+        h1 { margin-bottom: 1.5rem; font-size: 1.5rem; }
+        .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+        .card h2 { font-size: 1.1rem; margin-bottom: 0.5rem; }
+        .card .meta { color: var(--muted); font-size: 0.875rem; }
+        .card .desc { margin-top: 0.5rem; color: var(--muted); font-size: 0.9rem; }
+        .badge { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; margin-left: 0.5rem; }
+        .badge-active { background: #e6f4ea; color: #137333; }
+        .badge-deleted { background: #fce8e6; color: #c5221f; }
+        .empty { text-align: center; padding: 3rem; color: var(--muted); }
+        .load-more { text-align: center; padding: 1rem; }
+        .load-more button { padding: 0.5rem 2rem; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>脚本控制台</h1>
+        <div id="scriptList" data-total="2">
+            
+            <div class="card" data-id="11111111-2222-4333-8444-555555555555">
+                <h2><a href="/scripts/11111111-2222-4333-8444-555555555555">示例自写脚本</a>
+                    <span class="badge badge-active">已启用</span>
+                    
+                </h2>
+                <div class="meta">v1.2.0 · self</div>
+                <div class="desc">含 &lt;b&gt;HTML&lt;/b&gt; 与 &#34;引号&#34; 的描述</div>
+            </div>
+            
+            <div class="card" data-id="abcdef012345">
+                <h2><a href="/scripts/abcdef012345">示例同步脚本</a>
+                    <span class="badge badge-inactive">已停用</span>
+                    
+                </h2>
+                <div class="meta">v2.0.0 · synced</div>
+                <div class="desc">来自 GreasyFork 的同步脚本</div>
+            </div>
+            
+            
+        </div>
+        
+    </div>
+    <script>
+    (function(){
+        var batch =  10 , total =  2 ;
+        var shown = 0;
+        function loadMore() {
+            var next = Math.min(shown + batch, total);
+            for (var i = shown; i < next; i++) {
+                var cards = document.querySelectorAll('.card');
+                if (cards[i]) cards[i].style.display = '';
+            }
+            shown = next;
+            if (shown >= total) document.getElementById('loadMore').style.display = 'none';
+        }
+        document.getElementById('loadMoreBtn').onclick = loadMore;
+        loadMore();
+    })();
+    </script>
+</body>
+</html>

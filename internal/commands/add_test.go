@@ -403,6 +403,78 @@ func TestSyncAllSomeFail(t *testing.T) {
 		t.Errorf("sync all 应有结果: %s", res.Text)
 	}
 }
+
+// TestSyncAllWritesRegistry 回归：runSyncAll 曾在 []registry.Script 副本上
+// 改字段，saveReg 写回的 registry 与改动前完全一致 —— 批量同步从不更新版本号。
+func TestSyncAllWritesRegistry(t *testing.T) {
+	env, _ := buildTestEnvWithFake(t)
+
+	newCode := `// ==UserScript==
+// @name        同步脚本
+// @version     3.0.0
+// @author       Tester
+// @match       *://example.com/*
+// @grant       GM.xmlHttpRequest
+// ==/UserScript==`
+	env.Doer.(*fakeDoer).resp = &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(newCode)),
+		Header:     http.Header{},
+	}
+
+	res, err := Execute("sync", env, "all", nil)
+	if err != nil {
+		t.Fatalf("sync all 执行失败: %v", err)
+	}
+	if !res.Changed {
+		t.Errorf("sync all 有版本变更应落盘: %s", res.Text)
+	}
+
+	reg, err := loadReg(env)
+	if err != nil {
+		t.Fatalf("重新加载 registry 失败: %v", err)
+	}
+	var got *registry.Script
+	for i := range reg.Scripts {
+		if reg.Scripts[i].ID == "sync01" {
+			got = &reg.Scripts[i]
+		}
+	}
+	if got == nil {
+		t.Fatal("registry 中应有 sync01")
+	}
+	if got.Version != "3.0.0" {
+		t.Errorf("版本号应从 1.0.0 更新到 3.0.0, got %q", got.Version)
+	}
+	if got.LastSyncedAt == nil {
+		t.Error("LastSyncedAt 应被写入")
+	}
+	if got.Author == "" {
+		t.Errorf("Author 应随同步更新, got %q", got.Author)
+	}
+
+	code, err := script.ReadSource(env.Root, "sync01", registry.TypeSynced)
+	if err != nil {
+		t.Fatalf("读取同步源码失败: %v", err)
+	}
+	if !strings.Contains(code, "@version     3.0.0") {
+		t.Errorf("源码文件应同步为 3.0.0 内容: %s", code)
+	}
+}
+
+// TestSyncAllAlias 验证 /sync-all 注册为 /sync all 的别名。
+func TestSyncAllAlias(t *testing.T) {
+	env, _ := buildTestEnvWithFake(t)
+
+	res, err := Execute("sync-all", env, "", nil)
+	if err != nil {
+		t.Fatalf("sync-all 执行失败: %v", err)
+	}
+	if !strings.Contains(res.Text, "脚本") {
+		t.Errorf("sync-all 应返回同步结果: %s", res.Text)
+	}
+}
+
 func TestAddFromURLWithDisabled(t *testing.T) {
 	env, _ := buildTestEnvWithFake(t)
 

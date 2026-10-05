@@ -250,7 +250,7 @@ func TestInfoNotFound(t *testing.T) {
 
 func TestNamesAllCommands(t *testing.T) {
 	names := Names()
-	expected := []string{"add", "build", "cleanup", "info", "list", "project", "rm", "sync"}
+	expected := []string{"add", "build", "cleanup", "info", "list", "project", "rm", "sync", "sync-all"}
 	for _, want := range expected {
 		found := false
 		for _, n := range names {

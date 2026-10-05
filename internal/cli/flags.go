@@ -43,23 +43,3 @@ type RunCommandFlags struct {
 	ResultFile      string
 	JSON            bool
 }
-
-// doctorFlags doctor 的输入。
-type doctorFlags struct {
-	Root  string
-	JSON  bool
-	Check bool
-}
-
-// cleanupFlags cleanup 的输入。
-type cleanupFlags struct {
-	Root  string
-	Keep  int
-	Apply bool
-	JSON  bool
-}
-
-// schemaFlags 各子命令共用的 schema 校验入参。
-type schemaFlags struct {
-	Version int
-}

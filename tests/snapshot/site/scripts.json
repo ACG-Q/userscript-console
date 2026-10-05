@@ -1,0 +1,1 @@
+[{"ID":"11111111-2222-4333-8444-555555555555","Name":"示例自写脚本","Version":"1.2.0","Type":"self","Enabled":true,"Deleted":false,"Description":"含 <b>HTML</b> 与 \"引号\" 的描述"},{"ID":"abcdef012345","Name":"示例同步脚本","Version":"2.0.0","Type":"synced","Enabled":false,"Deleted":false,"Description":"来自 GreasyFork 的同步脚本"}]

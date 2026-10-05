@@ -8,12 +8,6 @@ import (
 	"strings"
 )
 
-// 已知键（渲染时按此顺序输出；大小写按习惯形态）。
-var knownOrder = []string{
-	"name", "namespace", "version", "description", "author",
-	"match", "grant", "downloadURL", "updateURL",
-}
-
 // 习惯形态的键名（用于渲染）。
 var canonicalKey = map[string]string{
 	"name":        "@name",

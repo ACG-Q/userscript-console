@@ -24,9 +24,6 @@ func fixturePath(rel string) string {
 	return filepath.Join("..", "..", "tests", "fixtures", rel)
 }
 
-// gfScript 对应 direct/example_user_script.user.js（用于一级直链测试）。
-const gfScript = "FIXTURE_DIRECT_EXAMPLE_USER_SCRIPT" // 由 TestGreasyfork_一级成功与locale去除 读取 fixture
-
 // ── MatchURL 白名单 ──────────────────────────────────────
 
 func TestGreasyfork_MatchURL(t *testing.T) {

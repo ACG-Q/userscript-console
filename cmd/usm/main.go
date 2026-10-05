@@ -10,12 +10,16 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/acg-q/userscript-console/internal/cli"
 	"github.com/acg-q/userscript-console/internal/commands"
+	"github.com/acg-q/userscript-console/internal/github"
+	"github.com/acg-q/userscript-console/internal/parser"
 	"github.com/acg-q/userscript-console/internal/registry"
 	"github.com/acg-q/userscript-console/internal/snapshot"
 )
@@ -32,6 +36,18 @@ func run(args []string) int {
 		usage(os.Stderr)
 		return 2
 	}
+
+	// registry schema 跨仓防漂移（SPEC-CLI §0.4）：action.yml 用
+	// USM_REGISTRY_SCHEMA 声明调用方依赖的 registry 格式，与本二进制内置
+	// 版本不符即拒绝执行，避免用旧二进制读写新格式数据。
+	// 只校验触碰 registry 的五个子命令；version/help/snapshot 不读写数据。
+	switch args[0] {
+	case "run-command", "project", "build", "cleanup", "doctor":
+		if rc := checkRegistrySchema(args); rc != 0 {
+			return rc
+		}
+	}
+
 	switch args[0] {
 	case "version", "--version", "-v":
 		fmt.Printf("usm %s\nregistry-schema-version %d\n", version, registry.SchemaVersion)
@@ -68,6 +84,32 @@ func hasJSONFlag(args []string) bool {
 		}
 	}
 	return false
+}
+
+// checkRegistrySchema 校验 USM_REGISTRY_SCHEMA 与 registry.SchemaVersion 一致。
+// 未设置 → 跳过（本地手跑不强制）；不匹配 → stderr ERROR + exit 1（SPEC-ARCH-TEST §6）。
+// --json 时 stdout 仍须输出合法 JSON，否则 action.yml 的 jq/heredoc 会连带失败。
+func checkRegistrySchema(args []string) int {
+	want := strings.TrimSpace(cli.EnvOr("USM_REGISTRY_SCHEMA", ""))
+	if want == "" {
+		return 0
+	}
+	if got, err := strconv.Atoi(want); err != nil || got != registry.SchemaVersion {
+		msg := fmt.Sprintf("registry schema 不匹配：调用方声明 %q，本二进制要求 %d", want, registry.SchemaVersion)
+		fmt.Fprintf(os.Stderr, "ERROR: %s\n", msg)
+		if hasJSONFlag(args) {
+			if err := writeJSON(os.Stdout, map[string]any{
+				"authorized": false,
+				"changed":    false,
+				"result":     "❌ " + msg,
+				"warnings":   []string{},
+			}); err != nil {
+				fmt.Fprintf(os.Stderr, "ERROR: 写 JSON 失败: %v\n", err)
+			}
+		}
+		return 1
+	}
+	return 0
 }
 
 // ── doctor ──────────────────────────────────────────────────
@@ -123,6 +165,31 @@ func doctorRun(args []string) int {
 
 func runCommandRun(args []string) int {
 	flags := parseRunCommandFlags(args)
+
+	// flag > env > 默认（SPEC-CLI §0.4）。action.yml 只经 env 传参（防注入，
+	// 见 SPEC-ACTION §4.2），不做 env 兜底 = 命令面板整体失效。
+	if flags.CommentBody == "" {
+		flags.CommentBody = cli.EnvOr("COMMENT_BODY", "")
+	}
+	if flags.CommentUser == "" {
+		flags.CommentUser = cli.EnvOr("COMMENT_USER", "")
+	}
+	if flags.IssueNumber == "" {
+		flags.IssueNumber = cli.EnvOr("ISSUE_NUMBER", "")
+	}
+	if flags.RepoOwner == "" {
+		flags.RepoOwner = cli.EnvOr("REPO_OWNER", cli.EnvOr("GH_REPO_OWNER", ""))
+	}
+	if flags.PagesBase == "" {
+		flags.PagesBase = cli.EnvOr("PAGES_BASE", "")
+	}
+	if flags.AuthorName == "" {
+		flags.AuthorName = cli.EnvOr("AUTHOR_NAME", "usm")
+	}
+	if flags.AuthorNamespace == "" {
+		flags.AuthorNamespace = cli.EnvOr("AUTHOR_NAMESPACE", "")
+	}
+
 	if flags.CommentBody == "" {
 		fmt.Fprintln(os.Stderr, "ERROR: --comment-body 必填")
 		return 2
@@ -135,9 +202,6 @@ func runCommandRun(args []string) int {
 		fmt.Fprintln(os.Stderr, "ERROR: --issue-number 必填")
 		return 2
 	}
-	if flags.RepoOwner == "" {
-		flags.RepoOwner = cli.EnvOr("GH_REPO_OWNER", "")
-	}
 
 	issueNum, err := parseIssueNumber(flags.IssueNumber)
 	if err != nil {
@@ -145,14 +209,32 @@ func runCommandRun(args []string) int {
 		return 2
 	}
 
+	// 门禁 1（SPEC-CLI §1 判定顺序）：非命令面板 Issue → 不执行，exit 0。
+	if issueNum != controlIssueNumber {
+		return emitCommandResult(commands.Result{
+			Text: fmt.Sprintf("非命令面板 Issue #%d，忽略执行", issueNum),
+		}, false, flags)
+	}
+
+	// 门禁 2：评论者必须是仓库所有者；owner 未配置时 fail-open（本地/无仓场景）。
+	if flags.RepoOwner != "" && flags.CommentUser != flags.RepoOwner {
+		return emitCommandResult(commands.Result{
+			Text: fmt.Sprintf("权限不足：%s 不是仓库所有者 %s", flags.CommentUser, flags.RepoOwner),
+		}, false, flags)
+	}
+
 	env := &commands.Env{
 		Root:            cli.EnvOr("USM_ROOT", "."),
 		RepoOwner:       flags.RepoOwner,
 		CommentUser:     flags.CommentUser,
 		IssueNumber:     issueNum,
-		PagesBase:       cli.EnvOr("PAGES_BASE", ""),
-		AuthorName:      cli.EnvOr("AUTHOR_NAME", "usm"),
-		AuthorNamespace: cli.EnvOr("AUTHOR_NAMESPACE", ""),
+		PagesBase:       flags.PagesBase,
+		AuthorName:      flags.AuthorName,
+		AuthorNamespace: flags.AuthorNamespace,
+		// /add <URL>、/sync 走 fetchSource；不注入 = 生产环境必报
+		// "网络客户端未配置"（测试用例不触发真实抓取，60s 与 fetchSource 的超时一致）。
+		Doer:     &http.Client{Timeout: 60 * time.Second},
+		GHClient: newGitHubClient(),
 	}
 
 	cmd, cmdArgs, codeBlocks, err := parseCommandComment(flags.CommentBody)
@@ -167,23 +249,23 @@ func runCommandRun(args []string) int {
 		return 1
 	}
 
-	if flags.JSON {
-		out := map[string]any{"authorized": true, "changed": res.Changed, "result": res.Text}
-		if err := writeJSON(os.Stdout, out); err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: 写 JSON 失败: %v\n", err)
-			return 1
-		}
-	} else {
-		fmt.Println(res.Text)
-	}
+	return emitCommandResult(res, true, flags)
+}
 
+// controlIssueNumber 命令面板 Issue 号（SPEC-CLI §1 判定顺序第 1 步）。
+const controlIssueNumber = 1
+
+// emitCommandResult 输出 run-command 结果并落 --result-file 兼容层（SPEC-CLI §1）。
+func emitCommandResult(res commands.Result, authorized bool, flags cli.RunCommandFlags) int {
+	if rc := emitResultAuth(res, authorized, flags.JSON); rc != 0 {
+		return rc
+	}
 	if flags.ResultFile != "" {
 		if err := os.WriteFile(flags.ResultFile, []byte(res.Text), 0o644); err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: 写结果文件失败: %v\n", err)
 			return 1
 		}
 	}
-
 	return 0
 }
 
@@ -195,6 +277,7 @@ func projectRun(args []string) int {
 		Root:      root,
 		RepoOwner: cli.EnvOr("GH_REPO_OWNER", ""),
 		PagesBase: cli.EnvOr("PAGES_BASE", ""),
+		GHClient:  newGitHubClient(),
 		Now:       time.Now(),
 	}
 	res, err := commands.Execute("project", env, "", nil)
@@ -205,18 +288,25 @@ func projectRun(args []string) int {
 	return emitResult(res, hasJSONFlag(args))
 }
 
-// emitResult 输出命令结果：--json 时给 action.yml 用的 JSON，否则给人看的文本。
+func emitResult(res commands.Result, asJSON bool) int {
+	return emitResultAuth(res, true, asJSON)
+}
+
+// emitResultAuth 输出命令结果：--json 时给 action.yml 用的 JSON，否则给人看的文本。
 //
 // action.yml 对**所有**子命令都追加 --json 并用 jq 解析 stdout，
 // 所以任何子命令在 --json 下都必须输出合法 JSON —— 否则 jq parse error
 // 会连带 $GITHUB_OUTPUT 的 heredoc 解析失败，报
 // "Matching delimiter not found" + exit 5（真实事故，见 json_output_test.go）。
-func emitResult(res commands.Result, asJSON bool) int {
+//
+// authorized 只对 run-command 有意义（SPEC-CLI §1 步骤 2），其余子命令恒 true。
+func emitResultAuth(res commands.Result, authorized bool, asJSON bool) int {
 	if asJSON {
 		if err := writeJSON(os.Stdout, map[string]any{
-			"authorized": true,
+			"authorized": authorized,
 			"changed":    res.Changed,
 			"result":     res.Text,
+			"warnings":   res.Warnings,
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: 写 JSON 失败: %v\n", err)
 			return 1
@@ -232,10 +322,20 @@ func emitResult(res commands.Result, asJSON bool) int {
 func buildRun(args []string) int {
 	root := parseRootFlag(args)
 	pagesBase := cli.EnvOr("PAGES_BASE", "")
+	now := time.Now()
+	gh := newGitHubClient()
+	// 只在客户端真实存在时赋值：把 nil 的 *github.Client 塞进接口会让
+	// siteBuilder 的判空永远为真（接口非 nil），进而 nil-deref。
+	site := &siteBuilder{root: root, pagesBase: pagesBase, now: now}
+	if gh != nil {
+		site.gh = gh
+	}
 	env := &commands.Env{
 		Root:      root,
 		PagesBase: pagesBase,
-		Now:       time.Now(),
+		GHClient:  gh,
+		Site:      site,
+		Now:       now,
 	}
 	res, err := commands.Execute("build", env, "", nil)
 	if err != nil {
@@ -250,17 +350,11 @@ func buildRun(args []string) int {
 func cleanupRun(args []string) int {
 	root := parseRootFlag(args)
 	env := &commands.Env{
-		Root: root,
-		Now:  time.Now(),
+		Root:     root,
+		GHClient: newGitHubClient(),
+		Now:      time.Now(),
 	}
-	// 检查 --apply 标志
-	apply := false
-	for _, a := range args {
-		if a == "--apply" {
-			apply = true
-		}
-	}
-	res, err := commands.Execute("cleanup", env, boolToString(apply), nil)
+	res, err := commands.Execute("cleanup", env, cleanupArgs(args), nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		return 1
@@ -268,7 +362,69 @@ func cleanupRun(args []string) int {
 	return emitResult(res, hasJSONFlag(args))
 }
 
+// cleanupArgs 把 `usm cleanup` 的 flag 归一成 commands 能识别的参数串。
+//
+// 此前这里传的是 boolToString(apply)（"true"/"false"），parseCleanupFlags 找的是
+// "--apply" 子串 → 永远匹配不上 → CLI 上的 --apply/--keep 从未生效（恒 dry-run）。
+// action.yml 走 `cleanup --keep "$USM_KEEP" [--apply]`，两个 flag 都必须原样转发。
+func cleanupArgs(args []string) string {
+	apply := false
+	keep := 0
+	for i := 0; i < len(args); i++ {
+		switch {
+		case args[i] == "--apply":
+			apply = true
+		case strings.HasPrefix(args[i], "--keep="):
+			if n, err := strconv.Atoi(strings.TrimPrefix(args[i], "--keep=")); err == nil && n > 0 {
+				keep = n
+			}
+		case args[i] == "--keep" && i+1 < len(args):
+			if n, err := strconv.Atoi(args[i+1]); err == nil && n > 0 {
+				keep = n
+			}
+			i++
+		}
+	}
+	// flag > env > 默认（SPEC-CLI §0.4）
+	if !apply && strings.EqualFold(cli.EnvOr("USM_APPLY", ""), "true") {
+		apply = true
+	}
+	if keep == 0 {
+		if n, err := strconv.Atoi(cli.EnvOr("USM_KEEP", "")); err == nil && n > 0 {
+			keep = n
+		}
+	}
+
+	parts := make([]string, 0, 2)
+	if apply {
+		parts = append(parts, "--apply")
+	}
+	if keep > 0 {
+		parts = append(parts, "--keep="+strconv.Itoa(keep))
+	}
+	return strings.Join(parts, " ")
+}
+
 // ── 辅助函数 ────────────────────────────────────────────────
+
+// newGitHubClient 用 GITHUB_TOKEN + GITHUB_REPOSITORY 构造 GraphQL 客户端。
+// 任一缺失或构造失败 → nil，各命令按「GitHub 未配置」降级（不中断、不报致命错）。
+// 此前 commands.Env.GHClient 从未被赋值，project/cleanup/build 的 GitHub 分支
+// 一直走 nil（stats 拉不到、评论拉不到、投影只出统计）。
+func newGitHubClient() *github.Client {
+	token := cli.EnvOr("GITHUB_TOKEN", "")
+	repo := cli.EnvOr("GITHUB_REPOSITORY", "")
+	if token == "" || repo == "" {
+		return nil
+	}
+	c, err := github.New(token, repo)
+	if err != nil {
+		// 只报原因，绝不打印 token（SPEC-ARCH-TEST §6）。
+		fmt.Fprintf(os.Stderr, "WARN: GitHub 客户端不可用: %v\n", err)
+		return nil
+	}
+	return c
+}
 
 func parseRunCommandFlags(args []string) cli.RunCommandFlags {
 	var f cli.RunCommandFlags
@@ -321,29 +477,17 @@ func parseIssueNumber(s string) (int, error) {
 	return n, nil
 }
 
+// parseCommandComment 解析命令面板评论，委托 internal/parser（SPEC-CLI §1 判定顺序第 3 步）。
+// 未识别命令（空体 / 不以 / 开头 / 首 token 非法）→ error，由调用方映射解析失败（exit 1）。
+//
+// 不再手搓解析：旧实现把围栏行本身当成代码块内容（"```js" → "js"），
+// 导致 /add 拿到的永远是标记而不是源码，且不认 ~~~ 围栏与首行前的空行。
 func parseCommandComment(body string) (cmd string, args string, codes []string, err error) {
-	lines := strings.Split(strings.TrimSpace(body), "\n")
-	if len(lines) == 0 {
-		return "", "", nil, fmt.Errorf("评论体为空")
+	c := parser.Parse(body)
+	if !c.Ok {
+		return "", "", nil, fmt.Errorf("未识别命令（评论需以 /command 开头）")
 	}
-	first := strings.TrimSpace(lines[0])
-	if !strings.HasPrefix(first, "/") {
-		return "", "", nil, fmt.Errorf("评论必须以 / 开头")
-	}
-	parts := strings.SplitN(first[1:], " ", 2)
-	cmd = parts[0]
-	if len(parts) > 1 {
-		args = parts[1]
-	}
-	for i := 1; i < len(lines); i++ {
-		line := strings.TrimSpace(lines[i])
-		if strings.HasPrefix(line, "```") {
-			content := strings.TrimPrefix(line, "```")
-			content = strings.TrimSuffix(content, "```")
-			codes = append(codes, content)
-		}
-	}
-	return cmd, args, codes, nil
+	return c.Command, c.Args, c.Code, nil
 }
 
 func writeJSON(w *os.File, v any) error {

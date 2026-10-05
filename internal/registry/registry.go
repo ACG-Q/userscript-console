@@ -17,7 +17,6 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -271,6 +270,3 @@ func SourceID(sourceURL string) string {
 	sum := md5.Sum([]byte(sourceURL))
 	return hex.EncodeToString(sum[:])[:12]
 }
-
-// ErrNotFound 查询未命中。
-var ErrNotFound = errors.New("registry: entry not found")

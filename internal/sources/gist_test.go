@@ -10,11 +10,6 @@ import (
 
 const gistAPIURL = "https://api.github.com/gists/deadbeef"
 
-// fixturePath 返回测试 fixture 文件路径（相对仓库根）。
-func gistFixture(rel string) string {
-	return filepath.Join("..", "..", "tests", "fixtures", "gist", filepath.Base(rel))
-}
-
 // mustReadFixture 读取 fixture 文件，失败时终止测试。
 func mustReadFixture(t *testing.T, rel string) string {
 	t.Helper()

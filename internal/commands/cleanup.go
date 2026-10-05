@@ -69,7 +69,7 @@ func runCleanup(env *Env, args string, codeBlocks []string) (Result, error) {
 		return Result{}, err
 	}
 
-	archivePath := filepath.Join(filepath.Dir(env.Root), "archive", "commands.json")
+	archivePath := filepath.Join(env.Root, "archive", "commands.json")
 	existing, loadErr := cleanup.Load(archivePath)
 	if loadErr != nil && !os.IsNotExist(loadErr) {
 		return Result{}, fmt.Errorf("读取归档失败: %w", loadErr)
