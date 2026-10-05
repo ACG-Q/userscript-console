@@ -23,9 +23,12 @@ dist/build-warnings.txt
 *.exe
 *.test
 cover.out
+/cover
 *.out
 /bin/
 /sysinfo.json
+# GOCACHE 误指到仓库根时产生的验证缓存（不可提交的编译产物）
+/.gocache-verify/
 
 # ── 迁移期 Python 参照（若补入） ──
 __pycache__/
