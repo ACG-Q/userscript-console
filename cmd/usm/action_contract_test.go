@@ -9,7 +9,15 @@ package main
 //   description 行，漏了就静默 exit 1。
 //
 // 现在改为：**action.yml 不存任何版本常量**，binary-version / binary-sha256
-// 由调用方在 workflow 里显式声明，默认为空。本文件锁死这个新契约。
+// 的 default 为空；缺省时从 ACTION_REF（github.action_ref）自动推导：
+//   1) 精确 vX.Y.Z tag → 去 v 使用
+//   2) 大版本 vN tag → GitHub API 取最新 vN.x release
+//   3) 其他 → 明确报错提示显式传版本
+// 校验和同理：binary-sha256 缺省时从同 release 的 checksums.txt 自动取。
+// 显式传值可覆盖自动推导（sha-pin 调用方不变）。
+//
+// 若哪天又有人想「让 release 回填」，default 非空测试会红：那会重新引入
+// 「tag → 回填 → 推分支 → tag 语义被污染」的循环依赖。
 
 import (
 	"os"
@@ -264,5 +272,107 @@ func TestActionCommandWhitelist(t *testing.T) {
 	}
 	if !strings.Contains(runBody, "exit 2") {
 		t.Error("未知子命令应 exit 2")
+	}
+}
+
+// TestActionFetchBinaryAutoDeriveVersion Fetch 步骤必须包含从 ACTION_REF
+// 推导版本的逻辑（精确 vX.Y.Z、大版本 vN → GitHub API）。
+func TestActionFetchBinaryAutoDeriveVersion(t *testing.T) {
+	doc, _ := loadActionYAML(t)
+
+	var fetchStep string
+	for _, s := range doc.Runs.Steps {
+		if strings.Contains(s.Name, "Fetch") {
+			fetchStep = s.Run
+			break
+		}
+	}
+	if fetchStep == "" {
+		t.Fatal("找不到 Fetch binary 步骤")
+	}
+
+	// 精确语义化版本推导：ACTION_REF=^vX.Y.Z$ → 去 v
+	if !strings.Contains(fetchStep, `grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'`) {
+		t.Error("Fetch 步骤应包含精确语义化版本 tag 识别正则")
+	}
+	if !strings.Contains(fetchStep, `${ACTION_REF#v}`) {
+		t.Error("Fetch 步骤应包含去除 v 前缀的参数替换")
+	}
+
+	// 大版本 tag 推导：ACTION_REF=^vN$ → GitHub API 取最新 release
+	if !strings.Contains(fetchStep, `grep -Eq '^v[0-9]+$'`) {
+		t.Error("Fetch 步骤应包含大版本 tag 识别正则")
+	}
+	if !strings.Contains(fetchStep, "api.github.com/repos/ACG-Q/userscript-console/releases") {
+		t.Error("Fetch 步骤应包含 GitHub API 调用以解析大版本最新 release")
+	}
+	if !strings.Contains(fetchStep, "Authorization: Bearer") {
+		t.Error("Fetch 步骤 API 调用应携带 GH_TOKEN 认证")
+	}
+
+	// 无法推导时的明确报错（sha/分支/本地路径）
+	if !strings.Contains(fetchStep, "无法从 action ref 推导版本") {
+		t.Error("Fetch 步骤应包含无法推导版本时的明确报错提示")
+	}
+	if !strings.Contains(fetchStep, "binary-version:") && !strings.Contains(fetchStep, "binary-version") {
+		// 这里检查报错信息中提示 binary-version
+		if !strings.Contains(fetchStep, "显式传 binary-version") {
+			t.Error("报错应提示显式传 binary-version")
+		}
+	}
+}
+
+// TestActionFetchBinaryAutoDeriveSHA Fetch 步骤必须在缺省 sha 时
+// 从 checksums.txt 下载并解析 usm-linux-amd64 校验和。
+func TestActionFetchBinaryAutoDeriveSHA(t *testing.T) {
+	doc, _ := loadActionYAML(t)
+
+	var fetchStep string
+	for _, s := range doc.Runs.Steps {
+		if strings.Contains(s.Name, "Fetch") {
+			fetchStep = s.Run
+			break
+		}
+	}
+	if fetchStep == "" {
+		t.Fatal("找不到 Fetch binary 步骤")
+	}
+
+	// 从 checksums.txt 下载
+	if !strings.Contains(fetchStep, "checksums.txt") {
+		t.Error("Fetch 步骤应包含下载 checksums.txt 的逻辑")
+	}
+	// 解析 usm-linux-amd64 行的 sha
+	if !strings.Contains(fetchStep, "awk") || !strings.Contains(fetchStep, "usm-linux-amd64") {
+		t.Error("Fetch 步骤应解析 checksums.txt 中 usm-linux-amd64 的校验和")
+	}
+	// 解析失败兜底
+	if !strings.Contains(fetchStep, "checksums.txt 中未找到") {
+		t.Error("Fetch 步骤应包含 checksums.txt 解析失败的兜底报错")
+	}
+}
+
+// TestActionFetchBinaryOwnerHardcoded Fetch 步骤的下载 URL
+// 必须硬编码 ACG-Q/userscript-console，不能用 github.repository_owner
+// （后者是调用方 owner，外部调用方会 404）。
+func TestActionFetchBinaryOwnerHardcoded(t *testing.T) {
+	doc, _ := loadActionYAML(t)
+
+	var fetchStep string
+	for _, s := range doc.Runs.Steps {
+		if strings.Contains(s.Name, "Fetch") {
+			fetchStep = s.Run
+			break
+		}
+	}
+	if fetchStep == "" {
+		t.Fatal("找不到 Fetch binary 步骤")
+	}
+
+	if strings.Contains(fetchStep, "github.repository_owner") {
+		t.Error("下载 URL 不得使用 github.repository_owner（会导致外部调用方 404）")
+	}
+	if !strings.Contains(fetchStep, "ACG-Q/userscript-console") {
+		t.Error("下载 URL 必须硬编码 ACG-Q/userscript-console")
 	}
 }

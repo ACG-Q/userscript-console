@@ -1,0 +1,56 @@
+name: Smoke (tag @v1)
+
+# 发版后 E2E：验证 @v1/@vX.Y.Z 零手填二进制调用
+# 触发：workflow_dispatch（手动）+ release.yml 完成后自动跑（可加 schedule）
+# 使用 acg-q/userscript-console@v1（移动大版本 tag），use-binary: true，不传 binary-version/sha256
+
+on:
+  workflow_dispatch: {}
+  # release.yml 完成后自动触发（needs: publish）可改为 schedule：
+  # schedule:
+  #   - cron: '0 6 * * 1'  # 每周一 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-v1:
+    name: Smoke @v1 (binary auto-derive)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Prepare fixture registry
+        run: echo '{"schema":1,"scripts":[]}' > registry.json
+
+      # 核心验证：@v1 + use-binary: true 零手填（ACTION_REF=v1 -> GitHub API 推导最新 v1.x）
+      - name: doctor @v1 binary
+        id: doctor
+        uses: acg-q/userscript-console@v1
+        with:
+          command: doctor
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          use-binary: true
+
+      # 同源验证：@v1 源码模式（use-binary:false，默认）
+      - name: doctor @v1 source
+        id: doctor-source
+        uses: acg-q/userscript-console@v1
+        with:
+          command: doctor
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          use-binary: false
+
+  smoke-v1-cleanup:
+    name: Smoke @v1 cleanup dry-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: cleanup @v1 (dry-run)
+        uses: acg-q/userscript-console@v1
+        with:
+          command: cleanup
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          use-binary: true

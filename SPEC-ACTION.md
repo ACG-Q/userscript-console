@@ -21,7 +21,10 @@
 | `registry-schema-version` | | `'1'` | 不匹配 → 失败（跨仓 schema 防漂移） |
 | `keep` | | `'10'` | 仅 `cleanup`，保留的命令组数 |
 | `apply` | | `'false'` | 仅 `cleanup`；**必须显式 `true` 才真正删除**（默认 dry-run） |
-| `version` | | 内置常量 | 覆盖下载版本，仅自测用 |
+| `version` | | `''` | 二进制版本别名（等价 `binary-version`，兼容早期调用方） |
+| `use-binary` | | `'false'` | `true`=二进制模式（缺省自动推导版本+校验和）；`false`=源码模式（默认） |
+| `binary-version` | | `''` | 二进制版本号（不含 v）。缺省时从 ACTION_REF 推导：精确 `vX.Y.Z` tag 直接用；大版本 `vN` 取最新 `vN.x` release。显式传值可覆盖。 |
+| `binary-sha256` | | `''` | 二进制 sha256（64 位十六进制）。缺省时从同 release 的 `checksums.txt` 自动取 `usm-linux-amd64` 校验和。显式传值可收紧。 |
 
 ### 1.2 Outputs
 
@@ -179,10 +182,43 @@ jobs:
         run: |
           BODY="${RESULT:-操作完成}"
           [ -n "$PROJ_OUT" ] && BODY="$BODY
-
-$PROJ_OUT"
+          $PROJ_OUT"
           gh issue comment ${{ github.event.issue.number }} \
             -R ${{ github.repository }} --body "**执行结果：**"$'\n'"$BODY"
+```
+
+### 3.2 二进制零手填调用示例（v1.1.0+）
+
+```yaml
+# 源码模式（默认，始终跟随 commit 源码，无需版本配置）
+- uses: acg-q/userscript-console@v1.1.0
+  with:
+    command: build
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+
+# 二进制模式 + 自动推导版本（仅写 tag，不写 binary-version/sha256）
+- uses: acg-q/userscript-console@v1.1.0
+  with:
+    command: build
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    use-binary: true
+    # binary-version 与 binary-sha256 自动从 @v1.1.0 推导
+
+# 二进制模式 + 大版本 tag 自动解析（@v1 取最新 v1.x）
+- uses: acg-q/userscript-console@v1
+  with:
+    command: build
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    use-binary: true
+
+# 显式 pin sha + 显式二进制版本（内容仓安全惯例）
+- uses: acg-q/userscript-console@<40位sha>
+  with:
+    command: build
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    use-binary: true
+    binary-version: '1.1.0'
+    binary-sha256: '<64位十六进制>'
 ```
 
 ### 3.2 其余三条（骨架一致，仅 `command` 与提交路径不同）
@@ -201,12 +237,16 @@ $PROJ_OUT"
 
 ## 4. 安全要求（逐条硬性）
 
-1. **二进制校验**：v1 下载必须 `sha256sum -c`，sha 内置于 `action.yml`（随 release 由 CI 更新并提交）；校验失败 → `exit 1`。
-2. **不内插用户输入进 shell**：`comment-body` 只经 `env`（现 Python 设计已如此，见 `docs/design.md` §安全，**不得回归**）。
-3. **token 最小权限**：Action 不自声明 `permissions`（composite 无法声明），调用方声明；README 明确写出每条 workflow 需要的最小集合。
-4. **`secrets` 不落盘**：`GITHUB_TOKEN` 只进 `env`，不写进任何输出文件；`--json` 输出里不得包含 token。
-5. **`cleanup` 默认 dry-run**：`apply` 必须显式 `true`，防止误删 Issue 评论。
-6. **pin 惯例**：本仓内部对第三方 action（`actions/checkout`、`setup-python`）按 commit-sha pin（沿用内容仓既有约定）。
+1. **二进制校验**：v1 下载必须 `sha256sum -c`。校验和来源：
+   - 调用方显式传 `binary-sha256`（内容仓 sha-pin 惯例，收紧信任链）；
+   - **缺省时自动从同 release 的 `checksums.txt` 取 `usm-linux-amd64` 校验和**（与二进制同源，防篡改/传输损坏）。
+   校验失败 → `exit 1`，提示从 release 资产更新值。
+2. **下载 URL 固定仓库**：`https://github.com/ACG-Q/userscript-console/...`（不使用 `${{ github.repository_owner }}`，后者为调用方 owner，外部调用必 404）。
+3. **不内插用户输入进 shell**：`comment-body` 只经 `env`（现 Python 设计已如此，见 `docs/design.md` §安全，**不得回归**）。
+4. **token 最小权限**：Action 不自声明 `permissions`（composite 无法声明），调用方声明；README 明确写出每条 workflow 需要的最小集合。
+5. **`secrets` 不落盘**：`GITHUB_TOKEN` 只进 `env`，不写进任何输出文件；`--json` 输出里不得包含 token。
+6. **`cleanup` 默认 dry-run**：`apply` 必须显式 `true`，防止误删 Issue 评论。
+7. **pin 惯例**：本仓内部对第三方 action（`actions/checkout`、`setup-python`）按 commit-sha pin（沿用内容仓既有约定）。
 
 ---
 
@@ -216,11 +256,13 @@ $PROJ_OUT"
 |---|---|
 | 语义化 tag | `vMAJOR.MINOR.PATCH`；**不兼容的 inputs/outputs 变更 → MAJOR** |
 | 移动大版本 tag | `v1` 每次 release 后 `git tag -f v1 && git push -f origin v1`（release CI 自动做） |
-| 调用方 pin | **内容仓用 commit-sha**（安全惯例，与仓内 `actions/checkout@<sha>` 一致）；外部用户可用 `@v1` |
+| 调用方 pin | **内容仓用 commit-sha**（安全惯例，与仓内 `actions/checkout@<sha>` 一致）；外部用户可用 `@v1` 或 `@vX.Y.Z`（零手填二进制） |
+| 二进制版本自动推导（v1.1.0+） | 1) `binary-version` 显式值 → 用之<br>2) ACTION_REF 精确 `vX.Y.Z` → 去 v 使用<br>3) ACTION_REF 大版本 `vN` → GitHub API 取最新 `vN.x` release<br>4) 其他（sha/分支/本地） → 明确报错提示显式传版本 |
+| 二进制校验和自动推导（v1.1.0+） | 1) `binary-sha256` 显式值 → 用之<br>2) 缺省时从同 release `checksums.txt` 取 `usm-linux-amd64` 校验和 |
 | 自测 | 本仓 CI 用 `uses: ./` 跑 5 个 command 的冒烟（无需发布） |
-| 内置版本 | `action.yml` 的 `inputs.version` 默认值由 release CI 改写 → 一次 release 内 `version` 与 `sha256` 同提交更新 |
+| 内置版本 | `action.yml` 的 `inputs.version`/`binary-version`/`binary-sha256` 默认均为空，**不再回填**；缺省靠上述规则推导 |
 
-**接口变更流程**：改 `inputs/outputs` → 先改本文件 §1（作为契约评审）→ 同 PR 改 `userscripts/SPEC-WORKFLOWS.md` 对应片段 → 两仓测试绿才合并。
+**接口变更流程**：改 `inputs/outputs` → 先改本文件 §1（作为契约评审）→ 同 PR 改 `userscripts/SPEC-WORKFLOWS.md` 对应片段 → 两仓测试绿才合并.
 
 ---
 

@@ -163,11 +163,11 @@ jobs:
       # → 本 workflow 想推 tag 所在分支 → 分支已含写回 → tag 语义被污染。
       # 且实测正则还需跨过 description 行，漏了就在此静默 exit 1。
       #
-      # 现在 action.yml 不存任何版本常量，由**调用方**在 workflow 里显式声明：
-      #   use-binary: true
-      #   binary-version: '1.0.1'
-      #   binary-sha256: '<64 位>'
-      # release 退化为纯发布：无写回、无提交、不会因回填失败而整体挂掉。
+      # 现在 action.yml 不存任何版本常量，缺省时从 ACTION_REF 自动推导：
+      #   1) binary-version/binary-sha256 显式值 → 直接用（内容仓 sha-pin 惯例）
+      #   2) ACTION_REF 精确 vX.Y.Z（如 @v1.1.0） → 去 v 使用
+      #   3) ACTION_REF 大版本 vN（如 @v1） → GitHub API 取最新 vN.x release
+      # 校验和同理：binary-sha256 显式 > 从同 release checksums.txt 自动取。
       - name: 输出调用方配置片段
         env:
           VERSION: ${{ steps.ver.outputs.no_v }}
@@ -177,11 +177,37 @@ jobs:
           cat <<EOF
 
           ── 调用方（userscripts）配置片段 ──────────────────────────
-          用 release \(v${VERSION}) 时，在 workflow 的 with: 里加：
+          用 release \(v${VERSION}) 时，只需在 workflow 里写 tag，**无需再手填版本/校验和**：
 
-              use-binary: true
-              binary-version: '${VERSION}'
-              binary-sha256: '${SHA}'
+          # 源码模式（默认，始终跟随 commit 源码）
+          uses: acg-q/userscript-console@v${VERSION}
+          with:
+            command: build
+            github-token: \${{ secrets.GITHUB_TOKEN }}
+
+          # 二进制模式 + 自动推导（零手填）
+          uses: acg-q/userscript-console@v${VERSION}
+          with:
+            command: build
+            github-token: \${{ secrets.GITHUB_TOKEN }}
+            use-binary: true
+            # binary-version 与 binary-sha256 自动从 @v${VERSION} 推导
+
+          # 二进制模式 + 大版本 tag（@v1 取最新 v1.x）
+          uses: acg-q/userscript-console@v1
+          with:
+            command: build
+            github-token: \${{ secrets.GITHUB_TOKEN }}
+            use-binary: true
+
+          # 显式 pin sha + 显式二进制版本（内容仓安全惯例）
+          uses: acg-q/userscript-console@<40位sha>
+          with:
+            command: build
+            github-token: \${{ secrets.GITHUB_TOKEN }}
+            use-binary: true
+            binary-version: '${VERSION}'
+            binary-sha256: '${SHA}'
 
           sha256 也可从 release 资产直接取：
               curl -sL https://github.com/ACG-Q/userscript-console/releases/download/v${VERSION}/checksums.txt | grep usm-linux-amd64

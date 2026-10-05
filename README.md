@@ -146,6 +146,66 @@ userscript-console/
 | `git add/commit/push` | ❌（只输出 `changed`） | ✅（**路径白名单，见 SPEC-WORKFLOWS §4**） |
 | `gh workflow run deploy-pages` | ❌ | ✅ |
 | 数据文件内容 | ✅ 写 | ✅ 拥有、审查 diff |
-| release / 版本 tag | ✅ | pin 版本（`@<sha>` 或 `@v1`） |
+| release / 版本 tag | ✅ | pin 版本（`@<sha>` 或 `@v1` 或 `@vX.Y.Z`） |
 | 快照与行为测试 | ✅ | 迁移期保留 Python 测试（回退用） |
 | Pages 部署与 `_site` 组装 | ❌（`build` 只产 dist） | ✅ |
+
+---
+
+## 8. 调用方式（v1.1.0+）
+
+### 8.1 源码模式（默认，`use-binary: false`）
+
+始终跟随所引用 commit 的源码，**无需任何版本配置**：
+
+```yaml
+uses: acg-q/userscript-console@v1.1.0    # 或 @v1、@<sha>
+with:
+  command: build
+  github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### 8.2 二进制模式（`use-binary: true`）——**零手填版本**
+
+只需写 tag，**`binary-version` 与 `binary-sha256` 自动推导**：
+
+```yaml
+# 精确语义化版本 tag（推导到对应 release）
+uses: acg-q/userscript-console@v1.1.0
+with:
+  command: build
+  github-token: ${{ secrets.GITHUB_TOKEN }}
+  use-binary: true
+  # binary-version 与 binary-sha256 自动从 @v1.1.0 推导
+
+# 大版本 tag（自动取最新 v1.x release）
+uses: acg-q/userscript-console@v1
+with:
+  command: build
+  github-token: ${{ secrets.GITHUB_TOKEN }}
+  use-binary: true
+```
+
+### 8.3 显式声明版本（内容仓安全惯例 / 收紧信任链）
+
+```yaml
+uses: acg-q/userscript-console@<40位sha>
+with:
+  command: build
+  github-token: ${{ secrets.GITHUB_TOKEN }}
+  use-binary: true
+  binary-version: '1.1.0'
+  binary-sha256: '<64位十六进制，来自 release checksums.txt>'
+```
+
+### 8.4 最小权限声明
+
+内容仓 workflow 需要的最小 `permissions`：
+
+```yaml
+permissions:
+  contents: write    # git commit/push（project/build/cleanup 可能改动数据文件）
+  issues: write      # 评论回帖、删评论
+  actions: write     # gh workflow run deploy-pages.yml
+  discussions: write # discussion 相关命令
+```

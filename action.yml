@@ -12,14 +12,16 @@ branding:
 #   true: 二进制模式 —— 从 release 下载 usm-linux-amd64 + sha256 校验。
 #          更快（免编译），但版本由 binary-version 决定，与本 commit 无关。
 #
-# 二进制版本与校验和**由调用方显式传入**（inputs），不从本文件读取：
-#   原因：版本号只有打完 tag 才知道，若让 release CI 回填本文件，
-#   就会形成「tag → 回填 → 再发布」的循环依赖（v1.0.1 实测卡死在
-#   「写回 action.yml」这一步）。改为调用方声明后，release 退化为
-#   纯发布，永不回填本文件。
+# 二进制版本与校验和**由调用方显式传入**（inputs），**缺省时自动推导**：
+#   1) binary-version/version 显式值 → 直接使用（sha-pin 调用方不变）
+#   2) ACTION_REF 精确 vX.Y.Z（如 @v1.1.0） → 去 v 使用（**核心：只写 tag 即可**）
+#   3) ACTION_REF 大版本 tag（v1） → GitHub API 取最新 v1.x release
+#   4) 其他（sha/分支/本地路径）→ 明确报错，提示显式传 binary-version 或改源码模式
+# 校验和同理：binary-sha256 显式 > 从同 release 的 checksums.txt 自动取
 #
 # 调用方一律 pin commit-sha：uses: acg-q/userscript-console@<40位sha>
-# 外部调用方可使用 v1 tag：uses: acg-q/userscript-console@v1
+# 外部调用方可使用 v1 tag：uses: acg-q/userscript-console@v1（零手填二进制）
+# 也可显式 @vX.Y.Z：uses: acg-q/userscript-console@vX.Y.Z（零手填二进制）
 
 inputs:
   command:
@@ -54,13 +56,13 @@ inputs:
     default: ''
 
   use-binary:
-    description: 'true=下载 release 二进制（需同时给 binary-version/binary-sha256）；false=源码模式（默认）'
+    description: 'true=下载 release 二进制（缺省自动推导版本+校验和，或显式给 binary-version/binary-sha256）；false=源码模式（默认）'
     default: 'false'
   binary-version:
-    description: '二进制版本号（不含 v），仅 use-binary=true 时必填。取自对应 release 的 tag，如 1.0.0'
+    description: '二进制版本号（不含 v）。缺省时从 ACTION_REF 推导：精确 vX.Y.Z tag 直接用；大版本 vN 取最新 vN.x release。显式传值可覆盖。'
     default: ''
   binary-sha256:
-    description: '二进制 sha256（64 位十六进制），仅 use-binary=true 时必填。取自 release 资产的 checksums.txt'
+    description: '二进制 sha256（64 位十六进制）。缺省时从同 release 的 checksums.txt 自动取 usm-linux-amd64 校验和。显式传值可收紧。'
     default: ''
 
 outputs:
@@ -86,26 +88,67 @@ runs:
       if: ${{ inputs.use-binary == 'true' }}
       shell: bash
       env:
-        # 版本：binary-version 为主，version 作为兼容别名
+        # 版本：binary-version 为主，version 作为兼容别名；缺省时从 action 自身 ref 推导
         WANT_VERSION: ${{ inputs.binary-version != '' && inputs.binary-version || inputs.version }}
         WANT_SHA256: ${{ inputs.binary-sha256 }}
+        ACTION_REF: ${{ github.action_ref }}
+        GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
         DEST="$RUNNER_TEMP/usm"
 
-        # 两个参数都是调用方责任 —— 缺失即报明确错误，
-        # 而不是发出畸形 URL 让 curl 报 404（难以定位）。
+        # ── 版本推导（仅在显式版本为空时） ──────────────────────
         if [ -z "$WANT_VERSION" ]; then
-          echo "::error::use-binary=true 时必须提供 binary-version（如 1.0.0）"
+          if printf '%s' "$ACTION_REF" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            # 精确语义化版本 tag（如 @v1.1.0）→ 去 v
+            WANT_VERSION="${ACTION_REF#v}"
+            echo "binary-version 未显式提供，从 action ref ($ACTION_REF) 推导: $WANT_VERSION"
+          elif printf '%s' "$ACTION_REF" | grep -Eq '^v[0-9]+$'; then
+            # 大版本 tag（如 @v1）→ 调用 GitHub API 取最新该大版本 release
+            MAJOR="${ACTION_REF#v}"
+            echo "检测到大版本 tag ($ACTION_REF)，查询最新 v${MAJOR}.x release..."
+            LATEST_TAG=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/ACG-Q/userscript-console/releases?per_page=20" \
+              | jq -r "map(select(.tag_name | test(\"^v${MAJOR}\\.\"))) | .[0].tag_name // empty")
+            if [ -z "$LATEST_TAG" ]; then
+              echo "::error::无法解析最新 v${MAJOR}.x release（API 返回空）。请显式传 binary-version: 'X.Y.Z'。"
+              exit 1
+            fi
+            WANT_VERSION="${LATEST_TAG#v}"
+            echo "大版本 tag 推导到最新 release: v${WANT_VERSION}"
+          else
+            # sha / 分支 / 本地路径 / 空 → 无法推导
+            echo "::error::use-binary=true 且无法从 action ref 推导版本（ACTION_REF='$ACTION_REF'）。"
+            echo "::error::请显式传 binary-version: 'X.Y.Z'（如 1.1.0），或改用源码模式 use-binary: false。"
+            exit 1
+          fi
+        fi
+
+        # ── 校验和推导（仅在显式 sha 为空时） ───────────────────
+        if [ -z "$WANT_SHA256" ]; then
+          CS_URL="https://github.com/ACG-Q/userscript-console/releases/download/v${WANT_VERSION}/checksums.txt"
+          echo "binary-sha256 未显式提供，从 release 资产下载 checksums.txt: $CS_URL"
+          curl -fsSL --retry 3 --retry-delay 2 -o "$DEST.checksums" "$CS_URL"
+          WANT_SHA256=$(awk '/usm-linux-amd64$/{print $1}' "$DEST.checksums" | head -n1)
+          if [ -z "$WANT_SHA256" ]; then
+            echo "::error::checksums.txt 中未找到 usm-linux-amd64 的校验和"
+            exit 1
+          fi
+          echo "从 checksums.txt 解析到 sha256: $WANT_SHA256"
+        fi
+
+        # ── 统一校验：版本非空 + sha 64位十六进制 ──────────────
+        if [ -z "$WANT_VERSION" ]; then
+          echo "::error::版本解析后仍为空（内部错误）"
           exit 1
         fi
         if ! printf '%s' "$WANT_SHA256" | grep -Eq '^[0-9a-f]{64}$'; then
-          echo "::error::use-binary=true 时必须提供 binary-sha256（64 位十六进制，取自 release 的 checksums.txt）"
+          echo "::error::binary-sha256 必须是 64 位十六进制（显式值或 checksums.txt 解析结果）"
           echo "::error::当前值='$WANT_SHA256'"
           exit 1
         fi
 
-        URL="https://github.com/${{ github.repository_owner }}/userscript-console/releases/download/v${WANT_VERSION}/usm-linux-amd64"
+        URL="https://github.com/ACG-Q/userscript-console/releases/download/v${WANT_VERSION}/usm-linux-amd64"
         echo "下载: $URL"
         curl -fsSL --retry 3 --retry-delay 2 -o "$DEST" "$URL"
 
