@@ -16,7 +16,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 
 	"github.com/acg-q/userscript-console/internal/meta"
@@ -103,11 +102,13 @@ func Detect(rawurl string) (Adapter, error) {
 // ── HTTP ───────────────────────────────────────────────
 
 const (
-	browserUA    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-	acceptHeader = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+	browserUA        = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+	acceptHeader     = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+	acceptLangHeader = "en-US,en;q=0.9"
 )
 
-// HTTPGet 执行 GET（浏览器 UA + Accept），ctx 贯穿整个请求生命周期。
+// HTTPGet 执行 GET（浏览器 UA + Accept + Accept-Language，缺 Accept-Language
+// 会被 GreasyFork 等站点 403 拦截），ctx 贯穿整个请求生命周期。
 // 非 2xx → error 含状态码与 URL；成功返回 body 字节。
 func HTTPGet(ctx context.Context, d Doer, rawurl string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
@@ -119,6 +120,7 @@ func HTTPGet(ctx context.Context, d Doer, rawurl string) ([]byte, error) {
 	}
 	req.Header.Set("User-Agent", browserUA)
 	req.Header.Set("Accept", acceptHeader)
+	req.Header.Set("Accept-Language", acceptLangHeader)
 	resp, err := d.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("sources: 请求失败 %s: %w", rawurl, err)
@@ -173,55 +175,6 @@ func extractUserScriptBlock(doc string) (string, bool) {
 }
 
 // 页面元数据兜底值（meta 标签 / title / og）。
-type pageMeta struct {
-	Title       string
-	Description string
-	Author      string
-}
-
-var (
-	reMetaTag = regexp.MustCompile(`(?is)<meta\s+[^>]*>`)
-	reAttr    = regexp.MustCompile(`(?is)\b(?:name|property)\s*=\s*["']([^"']+)["']`)
-	reContent = regexp.MustCompile(`(?is)\bcontent\s*=\s*["']([^"']*)["']`)
-	reTitle   = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
-)
-
-// parsePageMeta 从页面 HTML 提取 meta 标签（description/author）、<title>
-// （缺失时用 og:title 兜底）；值做 HTML 反转义与空白归一。
-func parsePageMeta(doc string) pageMeta {
-	var pm pageMeta
-	for _, tag := range reMetaTag.FindAllString(doc, -1) {
-		am, cm := reAttr.FindStringSubmatch(tag), reContent.FindStringSubmatch(tag)
-		if am == nil || cm == nil {
-			continue
-		}
-		val := strings.TrimSpace(html.UnescapeString(cm[1]))
-		if val == "" {
-			continue
-		}
-		switch strings.ToLower(strings.TrimSpace(am[1])) {
-		case "description", "og:description":
-			if pm.Description == "" {
-				pm.Description = val
-			}
-		case "author":
-			if pm.Author == "" {
-				pm.Author = val
-			}
-		case "og:title":
-			if pm.Title == "" {
-				pm.Title = val
-			}
-		}
-	}
-	if m := reTitle.FindStringSubmatch(doc); m != nil {
-		if t := strings.TrimSpace(html.UnescapeString(m[1])); t != "" {
-			pm.Title = t // <title> 比 og:title 更贴近页面主标题
-		}
-	}
-	return pm
-}
-
 // resultFromHeader 把 meta 头转成 Result（各适配器公共组装）。
 func resultFromHeader(h meta.Header, code, sourceType string) *Result {
 	return &Result{

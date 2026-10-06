@@ -204,6 +204,9 @@ func TestHTTPGet_成功与请求头(t *testing.T) {
 	if req.Header.Get("Accept") == "" {
 		t.Fatal("Accept 头缺失")
 	}
+	if req.Header.Get("Accept-Language") == "" {
+		t.Fatal("Accept-Language 头缺失（GreasyFork 等站点会 403 拦截）")
+	}
 }
 
 func TestHTTPGet_非2xx报错(t *testing.T) {
@@ -307,56 +310,6 @@ func TestExtractUserScriptBlock(t *testing.T) {
 			}
 			if c.ok && got != c.want {
 				t.Fatalf("块内容 =\n%q\n期望\n%q", got, c.want)
-			}
-		})
-	}
-}
-
-// ── parsePageMeta ────────────────────────────────────────
-
-func TestParsePageMeta(t *testing.T) {
-	cases := []struct {
-		name       string
-		in         string
-		wantTitle  string
-		wantDesc   string
-		wantAuthor string
-	}{
-		{
-			name:       "meta标签与title",
-			in:         `<head><meta name="description" content="页面描述"><meta name="author" content="作者甲"><title>脚本名 | Greasy Fork</title></head>`,
-			wantTitle:  "脚本名 | Greasy Fork",
-			wantDesc:   "页面描述",
-			wantAuthor: "作者甲",
-		},
-		{
-			name:       "og兜底与实体反转义",
-			in:         `<head><meta property="og:title" content="OG 标题 &amp; 副题"></head>`,
-			wantTitle:  "OG 标题 & 副题",
-			wantDesc:   "",
-			wantAuthor: "",
-		},
-		{
-			name:       "单引号属性也能取到",
-			in:         `<meta name='description' content='单引号描述'><meta name='author' content='乙'>`,
-			wantTitle:  "",
-			wantDesc:   "单引号描述",
-			wantAuthor: "乙",
-		},
-		{
-			name:       "无meta无title",
-			in:         `<html><body>nothing</body></html>`,
-			wantTitle:  "",
-			wantDesc:   "",
-			wantAuthor: "",
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			pm := parsePageMeta(c.in)
-			if pm.Title != c.wantTitle || pm.Description != c.wantDesc || pm.Author != c.wantAuthor {
-				t.Fatalf("parsePageMeta = %+v, 期望 title=%q desc=%q author=%q",
-					pm, c.wantTitle, c.wantDesc, c.wantAuthor)
 			}
 		})
 	}
