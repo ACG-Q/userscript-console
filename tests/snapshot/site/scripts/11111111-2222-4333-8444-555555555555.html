@@ -6,25 +6,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>示例自写脚本 · v1.2.0</title>
     <style>
-        :root { --bg: #fafafa; --card-bg: #fff; --border: #e0e0e0; --text: #333; --muted: #666; --accent: #1a73e8; }
+        :root { --bg: #fafafa; --card-bg: #fff; --border: #e0e0e0; --text: #333; --muted: #666; --brand: #0969da; --brand-hover: #0860ca; --on-accent: #fff; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
         .container { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
-        h1 { margin-bottom: 0.5rem; }
-        .meta { color: var(--muted); margin-bottom: 1.5rem; }
-        .section { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; }
-        .section h2 { font-size: 1.1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
-        table { width: 100%; border-collapse: collapse; }
-        td, th { padding: 0.5rem; border: 1px solid var(--border); text-align: left; }
-        th { background: #f5f5f5; }
-        .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 4px; text-decoration: none; font-size: 0.9rem; }
-        .btn-primary { background: var(--accent); color: #fff; }
-        .btn-secondary { background: #f1f3f4; color: var(--text); }
+        h1 { margin-bottom: 0.5rem; font-size: 1.5rem; }
+        .meta { color: var(--muted); margin-bottom: 1.5rem; font-size: 0.875rem; }
+        .section { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section h2 { font-size: 1.1rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+        .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 6px; font-size: 0.75rem; font-weight: 500; margin-right: 0.5rem; }
+        .badge-active { background: var(--info-bg); color: var(--info-text); }
+        .badge-sync { background: var(--warn-bg); color: var(--warn-text); }
+        .badge-ver { background: var(--bg-subtle); color: var(--text-muted); border: 1px solid var(--border); }
+        .tag { display: inline-block; padding: 2px 6px; background: var(--neutral-bg); color: var(--text-muted); font-size: 0.75rem; border-radius: 4px; margin-left: 4px; }
+        .tag-deleted { background: #fce8e6; color: #c5221f; }
+        table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+        td, th { padding: 0.5rem; border: 1px solid var(--border); text-align: left; font-size: 0.875rem; }
+        th { background: var(--bg-subtle); }
+        .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-size: 0.875rem; font-weight: 500; transition: opacity 0.15s ease; }
+        .btn-primary { background: var(--brand); color: var(--on-accent); }
+        .btn-primary:hover { opacity: 0.9; }
+        .btn-secondary { background: var(--bg-subtle); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { opacity: 0.9; }
         .tombstone { border-color: #c5221f; background: #fce8e6; }
-        .tab { display: inline-block; padding: 0.5rem 1rem; cursor: pointer; border-bottom: 2px solid transparent; }
-        .tab.active { border-bottom-color: var(--accent); color: var(--accent); }
+        .relative-time { color: var(--muted); font-size: 0.8rem; }
+        .tab { display: inline-block; padding: 0.5rem 1rem; cursor: pointer; border-bottom: 2px solid transparent; font-size: 0.875rem; color: var(--muted); transition: border-color 0.15s ease, color 0.15s ease; }
+        .tab.active { border-bottom-color: var(--brand); color: var(--brand); }
+        .tab-inactive { opacity: 0.5; pointer-events: none; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
+        .empty { color: var(--muted); padding: 1rem; }
     </style>
 </head>
 <body>
@@ -76,7 +87,7 @@
             <div class="tab-content active" id="tab-0">
                 <p><a href="https://github.com/acg-q/userscript-manager/discussions/12">查看原版讨论帖</a></p>
                 
-                <p style="color:var(--muted)">暂无评论</p>
+                <p class="empty">暂无评论</p>
                 
             </div>
             
@@ -98,7 +109,7 @@
         
 
         
-        <div class="section">
+        <div class="section" style="justify-content: space-between;">
             <a class="btn btn-primary" href="https://acg-q.github.io/userscript-console/dist/11111111-2222-4333-8444-555555555555.user.js">下载脚本</a>
             <a class="btn btn-secondary" href="/">返回首页</a>
         </div>
