@@ -22,12 +22,13 @@
 </head>
 <body>
     <div class="container">
-        <a class="back" href="{{.Base}}/commands">← 返回命令列表</a>
+        <a class="back" href="index.html">← 返回命令列表</a>
         <h1>命令归档</h1>
         {{if .Commands}}
+        {{$fp := .FirstPage}}
         <ul class="cmd-list">
             {{range .Commands}}
-            <li><a href="/commands/?cmd={{.}}">{{.}}</a></li>
+            <li><a href="page-{{index $fp .}}.html">{{.}}</a></li>
             {{end}}
         </ul>
         {{else}}

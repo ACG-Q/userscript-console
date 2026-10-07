@@ -528,3 +528,39 @@ func TestRenderMarkdownErrorPath(t *testing.T) {
 		t.Errorf("RenderMarkdown 应渲染标题: %s", got)
 	}
 }
+
+// TestBuildLinksAreRelative 站点内链必须是相对路径，Pages 子路径部署不得 404（CUTOVER §3）。
+func TestBuildLinksAreRelative(t *testing.T) {
+	reg := buildTestRegistry(t)
+	opts := Options{Out: t.TempDir(), PagesBase: "https://test.github.io/repo",
+		Now: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)}
+
+	// 归档：使命令页与首页导航可用（renderCommands 从 Out 同级 archive/ 读取）
+	archiveDir := filepath.Join(filepath.Dir(filepath.Clean(opts.Out)), "archive")
+	os.MkdirAll(archiveDir, 0o755)
+	archiveJSON := `{"schema":1,"commands":[{"command":"add","author":"u","created_at":"2026-01-01T00:00:00Z","results":[{"id":"r1","author":"u","body":"/add url","created_at":"2026-01-01T00:00:00Z"}]}]}`
+	if err := os.WriteFile(filepath.Join(archiveDir, "commands.json"), []byte(archiveJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := Build(reg, opts, Data{IssueStats: map[string]int{}})
+	if err != nil {
+		t.Fatalf("Build 失败: %v", err)
+	}
+
+	cases := []struct{ name, html, want, forbid string }{
+		{"首页脚本卡", out.IndexHTML, `href="scripts/`, `href="/scripts/`},
+		{"首页命令归档导航", out.IndexHTML, `href="commands/page-1.html"`, `href="/commands`},
+		{"详情页返回首页", out.DetailHTMLs["self01"], `href="../"`, `href="/"`},
+		{"命令页返回列表", out.CommandPages[1], `href="index.html"`, `{{.Base}}`},
+		{"命令索引分页链接", out.CommandsIndex, `href="page-1.html"`, `/commands/?cmd=`},
+	}
+	for _, c := range cases {
+		if !strings.Contains(c.html, c.want) {
+			t.Errorf("%s 应含 %q", c.name, c.want)
+		}
+		if strings.Contains(c.html, c.forbid) {
+			t.Errorf("%s 不应含 %q", c.name, c.forbid)
+		}
+	}
+}

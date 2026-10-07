@@ -101,8 +101,17 @@ func Build(reg *registry.Registry, opts Options, data Data) (Outcome, error) {
 		return active[i].ID < active[j].ID
 	})
 
+	// 命令分页（从 archive/commands.json 加载；须先于 index 渲染，供首页归档导航判定）
+	cp, cidx, err := renderCommands(opts)
+	if err != nil {
+		out.BuildWarnings = append(out.BuildWarnings, fmt.Sprintf("W3: %v", err))
+	}
+	out.CommandPages = cp
+	out.CommandsIndex = cidx
+	out.Pages += len(cp) + 1
+
 	// index.html
-	idx, err := renderIndex(active, opts, reg)
+	idx, err := renderIndex(active, opts, reg, len(cp) > 0)
 	if err != nil {
 		return out, err
 	}
@@ -138,15 +147,6 @@ func Build(reg *registry.Registry, opts Options, data Data) (Outcome, error) {
 		out.DetailHTMLs[s.ID] = h
 		out.Pages++
 	}
-
-	// 命令分页（从 archive/commands.json 加载）
-	cp, cidx, err := renderCommands(opts)
-	if err != nil {
-		out.BuildWarnings = append(out.BuildWarnings, fmt.Sprintf("W3: %v", err))
-	}
-	out.CommandPages = cp
-	out.CommandsIndex = cidx
-	out.Pages += len(cp) + 1
 
 	// 告警：IssueStats 未提供时降级渲染
 	if data.IssueStats == nil && len(reg.Scripts) > 0 {
@@ -210,13 +210,14 @@ type scriptCard struct {
 }
 
 type indexPageData struct {
-	Scripts   []scriptCard
-	Total     int
-	Batch     int
-	PagesBase string
+	Scripts     []scriptCard
+	Total       int
+	Batch       int
+	PagesBase   string
+	HasCommands bool
 }
 
-func renderIndex(scripts []registry.Script, opts Options, reg *registry.Registry) (string, error) {
+func renderIndex(scripts []registry.Script, opts Options, reg *registry.Registry, hasCommands bool) (string, error) {
 	cards := make([]scriptCard, 0, len(scripts))
 	for _, s := range scripts {
 		cards = append(cards, scriptCard{
@@ -230,10 +231,11 @@ func renderIndex(scripts []registry.Script, opts Options, reg *registry.Registry
 		})
 	}
 	data := indexPageData{
-		Scripts:   cards,
-		Total:     len(cards),
-		Batch:     opts.Batch,
-		PagesBase: opts.PagesBase,
+		Scripts:     cards,
+		Total:       len(cards),
+		Batch:       opts.Batch,
+		PagesBase:   opts.PagesBase,
+		HasCommands: hasCommands,
 	}
 	return renderTemplate("index", data)
 }
@@ -362,12 +364,11 @@ type commandsPageData struct {
 	Page       int
 	TotalPages int
 	TotalItems int
-	Base       string
 }
 
 type commandsIndexData struct {
-	Commands []string
-	Base     string
+	Commands  []string
+	FirstPage map[string]int
 }
 
 func renderCommands(opts Options) (map[int]string, string, error) {
@@ -405,6 +406,7 @@ func renderCommands(opts Options) (map[int]string, string, error) {
 
 	// 生成分页
 	result := make(map[int]string)
+	firstPage := make(map[string]int)
 	pageNum := 1
 	for _, cmdName := range cmdNames {
 		items := groups[cmdName]
@@ -420,7 +422,10 @@ func renderCommands(opts Options) (map[int]string, string, error) {
 				end = len(allEntries)
 			}
 			page := allEntries[i:end]
-			html, err := renderCommandPage(cmdName, page, pageNum, (len(allEntries)+opts.CommandsPerPage-1)/opts.CommandsPerPage, len(allEntries), opts.PagesBase)
+			if _, ok := firstPage[cmdName]; !ok {
+				firstPage[cmdName] = pageNum
+			}
+			html, err := renderCommandPage(cmdName, page, pageNum, (len(allEntries)+opts.CommandsPerPage-1)/opts.CommandsPerPage, len(allEntries))
 			if err != nil {
 				return result, "", err
 			}
@@ -430,7 +435,7 @@ func renderCommands(opts Options) (map[int]string, string, error) {
 	}
 
 	// commands/index.html
-	idxHTML, err := renderCommandsIndex(cmdNames, opts.PagesBase)
+	idxHTML, err := renderCommandsIndex(cmdNames, firstPage)
 	if err != nil {
 		return result, "", err
 	}
@@ -438,19 +443,25 @@ func renderCommands(opts Options) (map[int]string, string, error) {
 	return result, idxHTML, nil
 }
 
-func renderCommandPage(cmdName string, items []commandEntry, page, total, count int, base string) (string, error) {
+func renderCommandPage(cmdName string, items []commandEntry, page, total, count int) (string, error) {
 	return renderTemplate("commands", commandsPageData{
 		Command:    cmdName,
 		Items:      items,
 		Page:       page,
 		TotalPages: total,
 		TotalItems: count,
-		Base:       base,
 	})
 }
 
-func renderCommandsIndex(cmdNames []string, base string) (string, error) {
-	return renderTemplate("commands-index", commandsIndexData{Commands: cmdNames, Base: base})
+func renderCommandsIndex(cmdNames []string, firstPage map[string]int) (string, error) {
+	// 无分页（无条目）的命令不列出：模板按 FirstPage 取首页链接
+	visible := make([]string, 0, len(cmdNames))
+	for _, n := range cmdNames {
+		if _, ok := firstPage[n]; ok {
+			visible = append(visible, n)
+		}
+	}
+	return renderTemplate("commands-index", commandsIndexData{Commands: visible, FirstPage: firstPage})
 }
 
 // ── 辅助函数 ─────────────────────────────────────────────────
