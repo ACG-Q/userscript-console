@@ -115,29 +115,52 @@ func Group(results []Result) map[string][]Result {
 	return groups
 }
 
-// MergeArchive 将新结果合并到归档中，保留每个命令最近 Keep 条。
+// MergeArchive 将新结果合并到归档：按评论 ID 幂等（SPEC-DATA.md:102），
+// 每个命令保留最新 Keep 条，落盘顺序为旧→新（SPEC-DATA.md §2.3）。
 func MergeArchive(existing *Archive, newResults map[string][]Result, keep int) *Archive {
 	if existing == nil {
 		existing = &Archive{Schema: 1}
 	}
 	merged := make(map[string][]Result)
-	// 保留现有条目
+	seen := make(map[string]map[string]bool)
+	mark := func(cmd, id string) {
+		if id == "" {
+			return
+		}
+		if seen[cmd] == nil {
+			seen[cmd] = make(map[string]bool)
+		}
+		seen[cmd][id] = true
+	}
+	isSeen := func(cmd, id string) bool { return id != "" && seen[cmd][id] }
+
 	for _, cmd := range existing.Commands {
-		merged[cmd.Command] = append(merged[cmd.Command], cmd.Results...)
-	}
-	// 合并新条目
-	for cmd, results := range newResults {
-		merged[cmd] = append(merged[cmd], results...)
-	}
-	// 截断每个命令的条目数
-	for cmd := range merged {
-		if len(merged[cmd]) > keep {
-			merged[cmd] = merged[cmd][:keep]
+		for _, r := range cmd.Results {
+			merged[cmd.Command] = append(merged[cmd.Command], r)
+			mark(cmd.Command, r.ID)
 		}
 	}
-	// 构建归档
+	for cmd, results := range newResults {
+		for _, r := range results {
+			if isSeen(cmd, r.ID) {
+				continue
+			}
+			merged[cmd] = append(merged[cmd], r)
+			mark(cmd, r.ID)
+		}
+	}
+
 	var commands []CommandKey
 	for cmd, results := range merged {
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].CreatedAt.After(results[j].CreatedAt)
+		})
+		if len(results) > keep {
+			results = results[:keep]
+		}
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].CreatedAt.Before(results[j].CreatedAt)
+		})
 		commands = append(commands, CommandKey{
 			Command:   cmd,
 			Results:   results,

@@ -200,6 +200,10 @@ func TestMergeArchiveKeep(t *testing.T) {
 	if len(addCmd.Results) != 2 {
 		t.Errorf("Keep=2 时应保留 2 条，实际: %d", len(addCmd.Results))
 	}
+	if addCmd.Results[0].ID != "r2" || addCmd.Results[1].ID != "r3" {
+		t.Errorf("应保留最新 r2、r3 且旧→新排列，实际 [%s, %s]",
+			addCmd.Results[0].ID, addCmd.Results[1].ID)
+	}
 }
 
 func TestParseCommand(t *testing.T) {
@@ -301,5 +305,49 @@ func TestSave_NestedDirs(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("归档文件应存在: %v", err)
+	}
+}
+
+// TestMergeArchiveDedupByID 同一评论 ID 已在归档中时不得重复归档（SPEC-DATA.md:102 幂等）。
+func TestMergeArchiveDedupByID(t *testing.T) {
+	existing := &Archive{Schema: 1, Commands: []CommandKey{
+		{Command: "add", Results: []Result{
+			{ID: "n1", Author: "u", Body: "/add a", CreatedAt: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)},
+		}},
+	}}
+	newResults := map[string][]Result{
+		"add": {
+			{ID: "n1", Author: "u", Body: "/add a", CreatedAt: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)},
+			{ID: "n2", Author: "u", Body: "/add b", CreatedAt: time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)},
+		},
+	}
+	merged := MergeArchive(existing, newResults, 10)
+	if len(merged.Commands) != 1 {
+		t.Fatalf("应只有 add 组，实际 %d", len(merged.Commands))
+	}
+	if got := len(merged.Commands[0].Results); got != 2 {
+		t.Errorf("n1 已归档不应重复：期望 2 条，实际 %d", got)
+	}
+}
+
+// TestMergeArchiveKeepNewest 截断必须保留最新 Keep 条而非最旧，落盘顺序旧→新（SPEC-DATA.md §2.3）。
+func TestMergeArchiveKeepNewest(t *testing.T) {
+	d := func(day int) time.Time { return time.Date(2026, 10, day, 0, 0, 0, 0, time.UTC) }
+	existing := &Archive{Schema: 1, Commands: []CommandKey{
+		{Command: "add", Results: []Result{
+			{ID: "o1", Author: "u", CreatedAt: d(1)},
+			{ID: "o2", Author: "u", CreatedAt: d(2)},
+		}},
+	}}
+	newResults := map[string][]Result{
+		"add": {{ID: "n1", Author: "u", CreatedAt: d(3)}, {ID: "n2", Author: "u", CreatedAt: d(4)}},
+	}
+	merged := MergeArchive(existing, newResults, 2)
+	results := merged.Commands[0].Results
+	if len(results) != 2 {
+		t.Fatalf("keep=2 应保留 2 条，实际 %d", len(results))
+	}
+	if results[0].ID != "n1" || results[1].ID != "n2" {
+		t.Errorf("应保留最新 2 条且旧→新排列，实际 [%s, %s]", results[0].ID, results[1].ID)
 	}
 }

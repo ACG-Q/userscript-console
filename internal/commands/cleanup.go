@@ -11,6 +11,9 @@ import (
 	"github.com/acg-q/userscript-console/internal/cleanup"
 )
 
+// saveArchive 是 cleanup.Save 的注入缝，测试用于构造保存失败（见 cleanup_edge 思路）。
+var saveArchive = cleanup.Save
+
 func init() {
 	Register(Command{
 		Name:  "cleanup",
@@ -115,16 +118,17 @@ func runCleanup(env *Env, args string, codeBlocks []string) (Result, error) {
 		}
 
 		if flags.Apply {
+			// SPEC-DATA.md:103 归档先落盘再删评论；删除失败下轮只补删除。
+			if err := saveArchive(archivePath, merged); err != nil {
+				return Result{}, fmt.Errorf("保存归档失败: %w", err)
+			}
 			for _, c := range comments {
 				if !keptIDs[c.NodeID] {
 					if err := env.GHClient.DeleteComment(ctx, c.NodeID); err != nil {
-						return Result{}, fmt.Errorf("删除评论失败: %w", err)
+						return Result{}, fmt.Errorf("删除评论失败（归档已保存，下轮只补删除）: %w", err)
 					}
 					totalDeleted++
 				}
-			}
-			if err := cleanup.Save(archivePath, merged); err != nil {
-				return Result{}, fmt.Errorf("保存归档失败: %w", err)
 			}
 		}
 	}
