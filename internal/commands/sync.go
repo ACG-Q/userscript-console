@@ -103,6 +103,9 @@ func runSyncOne(env *Env, r *registry.Registry, key string) (Result, error) {
 	if err := script.WriteSource(env.Root, s.ID, s.Type, src.Code); err != nil {
 		return Result{}, fmt.Errorf("写入脚本文件失败: %w", err)
 	}
+	if err := writeDist(env, s, src.Code); err != nil {
+		return Result{}, fmt.Errorf("写入分发产物失败: %w", err)
+	}
 
 	return reply(changed, "✅ 已同步脚本 %q v%s → v%s", s.Name, oldVersion, src.Version)
 }
@@ -165,6 +168,10 @@ func runSyncAll(env *Env, r *registry.Registry) (Result, error) {
 	for i, s := range updatedEntries {
 		if err := script.WriteSource(env.Root, s.ID, s.Type, syncedSrc[i].Code); err != nil {
 			writeErrs++
+			continue
+		}
+		if err := writeDist(env, s, syncedSrc[i].Code); err != nil {
+			writeErrs++
 		}
 	}
 
@@ -176,7 +183,7 @@ func runSyncAll(env *Env, r *registry.Registry) (Result, error) {
 		res.Warnings = append(res.Warnings, fmt.Sprintf("%d 个脚本抓取失败，已跳过", failed))
 	}
 	if writeErrs > 0 {
-		res.Warnings = append(res.Warnings, fmt.Sprintf("%d 个脚本源码写盘失败", writeErrs))
+		res.Warnings = append(res.Warnings, fmt.Sprintf("%d 个脚本源码/分发产物写盘失败", writeErrs))
 	}
 	return res, nil
 }

@@ -98,6 +98,9 @@ func addFromURL(env *Env, r *registry.Registry, rawURL string, now time.Time) (R
 	if err := script.WriteSource(env.Root, s.ID, s.Type, src.Code); err != nil {
 		return Result{}, fmt.Errorf("写入脚本文件失败: %w", err)
 	}
+	if err := writeDist(env, &s, src.Code); err != nil {
+		return Result{}, fmt.Errorf("写入分发产物失败: %w", err)
+	}
 
 	return reply(changed, "✅ 已添加脚本 %q v%s（来源: %s，ID: %s）", s.Name, s.Version, rawURL, s.ID)
 }
@@ -142,6 +145,9 @@ func addSelfScript(env *Env, r *registry.Registry, code string, now time.Time) (
 	// 写入脚本文件
 	if err := script.WriteSource(env.Root, s.ID, s.Type, code); err != nil {
 		return Result{}, fmt.Errorf("写入脚本文件失败: %w", err)
+	}
+	if err := writeDist(env, &s, code); err != nil {
+		return Result{}, fmt.Errorf("写入分发产物失败: %w", err)
 	}
 
 	return reply(changed, "✅ 已添加自写脚本 %q v%s（ID: %s）", s.Name, s.Version, s.ID)

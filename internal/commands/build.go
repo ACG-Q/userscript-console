@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/acg-q/userscript-console/internal/registry"
 	"github.com/acg-q/userscript-console/internal/script"
 )
 
@@ -40,7 +39,7 @@ func runBuild(env *Env, args string, codeBlocks []string) (Result, error) {
 
 	for i := range r.Scripts {
 		s := &r.Scripts[i]
-		if s.Deleted || s.Type != registry.TypeSelf {
+		if s.Deleted {
 			skipped++
 			continue
 		}
@@ -51,7 +50,7 @@ func runBuild(env *Env, args string, codeBlocks []string) (Result, error) {
 			continue
 		}
 
-		if err := script.WriteDist(env.Root, s.ID, srcCode); err != nil {
+		if err := writeDist(env, s, srcCode); err != nil {
 			errs++
 			continue
 		}
@@ -72,7 +71,7 @@ func runBuild(env *Env, args string, codeBlocks []string) (Result, error) {
 
 	msg := fmt.Sprintf("✅ 构建完成：\n\n"+
 		"- 已构建: %d 个脚本\n"+
-		"- 已跳过: %d 个（已删除或非 self 类型）\n",
+		"- 已跳过: %d 个（已删除）\n",
 		built, skipped)
 
 	if errs > 0 {

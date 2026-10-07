@@ -25,6 +25,7 @@ import (
 
 	"github.com/acg-q/userscript-console/internal/github"
 	"github.com/acg-q/userscript-console/internal/registry"
+	"github.com/acg-q/userscript-console/internal/script"
 	"github.com/acg-q/userscript-console/internal/sources"
 )
 
@@ -240,6 +241,15 @@ func distURL(env *Env, id string) string {
 		return ""
 	}
 	return base + "/dist/" + id + ".user.js"
+}
+
+// writeDist 生成并写入分发产物：以 registry 版本同步 @version，
+// 注入安装地址到 @downloadURL/@updateURL（PagesBase 为空则不注入，由 EnsureURLs 兜底）。
+// self 与 synced 同规则（对应 projec-02 build_userscript_header / build_dist_for_synced）。
+func writeDist(env *Env, s *registry.Script, srcCode string) error {
+	code := script.SyncVersion(srcCode, s.Version)
+	code = script.EnsureURLs(code, distURL(env, s.ID), distURL(env, s.ID))
+	return script.WriteDist(env.Root, s.ID, code)
 }
 
 // isURL 判定参数是否是来源 URL（http/https 前缀）。

@@ -678,3 +678,103 @@ func TestFetchSourceNullResult(t *testing.T) {
 		t.Errorf("错误信息应含 '抓取来源失败': %v", err)
 	}
 }
+
+// ── C4 分发管线：add/sync 必须写 dist 并注入安装 URL（SPEC-DATA §2.2；projec-02 add.py:79,149-150、sync.py:103-104） ──
+
+// TestAddFromURLWritesDist /add <URL> 后 synced 脚本的 dist/<id>.user.js 必须存在且含安装地址。
+func TestAddFromURLWritesDist(t *testing.T) {
+	env, _ := buildTestEnvWithFake(t)
+
+	sourceCode := `// ==UserScript==
+// @name        分发测试
+// @version     2.0.0
+// @match       *://example.com/*
+// @grant       none
+// ==/UserScript==`
+	env.Doer.(*fakeDoer).resp = &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(sourceCode)),
+		Header:     http.Header{},
+	}
+
+	rawURL := "https://other.com/script.user.js"
+	if _, err := Execute("add", env, rawURL, nil); err != nil {
+		t.Fatalf("add 执行失败: %v", err)
+	}
+
+	id := registry.SourceID(rawURL)
+	dist, err := os.ReadFile(filepath.Join(env.Root, "dist", id+".user.js"))
+	if err != nil {
+		t.Fatalf("dist/%s.user.js 应存在: %v", id, err)
+	}
+	want := "@downloadURL https://test.github.io/test/dist/" + id + ".user.js"
+	if !strings.Contains(string(dist), want) {
+		t.Errorf("dist 应含 %q，实际:\n%s", want, dist)
+	}
+}
+
+// TestAddSelfScriptWritesDist 自写 /add 后 dist/<id>.user.js 必须存在且含安装地址。
+func TestAddSelfScriptWritesDist(t *testing.T) {
+	env, _ := buildTestEnvWithFake(t)
+
+	code := `// ==UserScript==
+// @name        自写分发
+// @version     1.2.3
+// @match       *://*/*
+// @grant       none
+// ==/UserScript==`
+	if _, err := Execute("add", env, "", []string{code}); err != nil {
+		t.Fatalf("add 自写脚本失败: %v", err)
+	}
+
+	r, err := registry.Load(filepath.Join(env.Root, "registry.json"))
+	if err != nil {
+		t.Fatalf("读 registry 失败: %v", err)
+	}
+	s := findEntry(r, "自写分发")
+	if s == nil {
+		t.Fatal("registry 应含新自写条目")
+	}
+
+	dist, err := os.ReadFile(filepath.Join(env.Root, "dist", s.ID+".user.js"))
+	if err != nil {
+		t.Fatalf("dist/%s.user.js 应存在: %v", s.ID, err)
+	}
+	want := "@downloadURL https://test.github.io/test/dist/" + s.ID + ".user.js"
+	if !strings.Contains(string(dist), want) {
+		t.Errorf("dist 应含 %q，实际:\n%s", want, dist)
+	}
+}
+
+// TestSyncWritesDist /sync 后 dist 必须重建：版本同步为新值并注入安装地址。
+func TestSyncWritesDist(t *testing.T) {
+	env, _ := buildTestEnvWithFake(t)
+
+	newCode := `// ==UserScript==
+// @name        同步脚本
+// @version     3.0.0
+// @match       *://example.com/*
+// @grant       GM.xmlHttpRequest
+// ==/UserScript==`
+	env.Doer.(*fakeDoer).resp = &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(newCode)),
+		Header:     http.Header{},
+	}
+
+	if _, err := Execute("sync", env, "sync01", nil); err != nil {
+		t.Fatalf("sync 执行失败: %v", err)
+	}
+
+	dist, err := os.ReadFile(filepath.Join(env.Root, "dist", "sync01.user.js"))
+	if err != nil {
+		t.Fatalf("dist/sync01.user.js 应存在: %v", err)
+	}
+	got := string(dist)
+	if !strings.Contains(got, "@version") || !strings.Contains(got, "3.0.0") {
+		t.Errorf("dist 应同步为 @version 3.0.0，实际:\n%s", got)
+	}
+	if !strings.Contains(got, "@downloadURL https://test.github.io/test/dist/sync01.user.js") {
+		t.Errorf("dist 应含安装地址，实际:\n%s", got)
+	}
+}

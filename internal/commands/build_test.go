@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/acg-q/userscript-console/internal/registry"
+	"github.com/acg-q/userscript-console/internal/script"
 )
 
 // fakeSite 记录 /build 对 Env.Site 的调用。
@@ -94,4 +95,65 @@ func writeSelfSource(root, id string) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, "index.js"), []byte("// test"), 0o644)
+}
+
+// ── C4 分发管线：build 必须覆盖 synced 并注入安装 URL（CUTOVER:13,63；projec-02 build_dist_for_synced） ──
+
+// TestBuildIncludesSynced build 不得跳过 synced：self 与 synced 的 dist 都要产出且含安装地址。
+func TestBuildIncludesSynced(t *testing.T) {
+	env, _ := buildTestEnvWithFake(t)
+	env.PagesBase = "https://example.github.io/repo"
+
+	selfCode := "// ==UserScript==\n// @name self\n// @version 1.0.0\n// @match *://*/*\n// ==/UserScript=="
+	syncedCode := "// ==UserScript==\n// @name synced\n// @version 2.0.0\n// @match *://example.com/*\n// ==/UserScript=="
+	if err := script.WriteSource(env.Root, "self01", registry.TypeSelf, selfCode); err != nil {
+		t.Fatalf("写 self 源失败: %v", err)
+	}
+	if err := script.WriteSource(env.Root, "sync01", registry.TypeSynced, syncedCode); err != nil {
+		t.Fatalf("写 synced 源失败: %v", err)
+	}
+
+	if _, err := Execute("build", env, "", nil); err != nil {
+		t.Fatalf("build 执行失败: %v", err)
+	}
+
+	for _, id := range []string{"self01", "sync01"} {
+		dist, err := os.ReadFile(filepath.Join(env.Root, "dist", id+".user.js"))
+		if err != nil {
+			t.Errorf("dist/%s.user.js 应存在: %v", id, err)
+			continue
+		}
+		want := "@downloadURL https://example.github.io/repo/dist/" + id + ".user.js"
+		if !strings.Contains(string(dist), want) {
+			t.Errorf("dist/%s 应含 %q，实际:\n%s", id, want, dist)
+		}
+	}
+}
+
+// TestBuildDistIdempotent 连续两次 build 的 dist 字节一致（CUTOVER:63 git diff --exit-code dist）。
+func TestBuildDistIdempotent(t *testing.T) {
+	env, _ := buildTestEnvWithFake(t)
+	env.PagesBase = "https://example.github.io/repo"
+
+	selfCode := "// ==UserScript==\n// @name self\n// @version 1.0.0\n// @match *://*/*\n// ==/UserScript=="
+	if err := script.WriteSource(env.Root, "self01", registry.TypeSelf, selfCode); err != nil {
+		t.Fatalf("写源失败: %v", err)
+	}
+
+	build := func() string {
+		if _, err := Execute("build", env, "", nil); err != nil {
+			t.Fatalf("build 执行失败: %v", err)
+		}
+		b, err := os.ReadFile(filepath.Join(env.Root, "dist", "self01.user.js"))
+		if err != nil {
+			t.Fatalf("dist 应存在: %v", err)
+		}
+		return string(b)
+	}
+
+	first := build()
+	second := build()
+	if first != second {
+		t.Errorf("两次 build 的 dist 应一致:\n--- 第一次 ---\n%s\n--- 第二次 ---\n%s", first, second)
+	}
 }
