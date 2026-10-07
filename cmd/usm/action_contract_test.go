@@ -232,7 +232,8 @@ func TestActionNoSelfEvaluatingHeredoc(t *testing.T) {
 }
 
 // TestActionPAGESBaseDerivation PAGES_BASE 推导必须用 bash 原生参数替换，
-// 不能套一层 $(echo ...) —— 之前那层会吃掉转义。
+// 按 owner/repo 拆分推导子路径站点基址（C1），不能套 $(echo)、
+// 也不能把 owner/repo 整体替换成 -（旧 bug 行）。
 func TestActionPAGESBaseDerivation(t *testing.T) {
 	doc, _ := loadActionYAML(t)
 
@@ -246,8 +247,14 @@ func TestActionPAGESBaseDerivation(t *testing.T) {
 		t.Fatal("找不到 Run 步骤")
 	}
 
-	if !strings.Contains(runBody, `PAGES_BASE:=https://${GITHUB_REPOSITORY/\//-}.github.io`) {
-		t.Error("PAGES_BASE 推导写法不符（应为 bash 原生参数替换，无 $(echo) 包裹）")
+	if !strings.Contains(runBody, `owner_repo=(${GITHUB_REPOSITORY//\// })`) {
+		t.Error("应按 owner/repo 拆分 GITHUB_REPOSITORY（bash 原生参数替换）")
+	}
+	if !strings.Contains(runBody, `PAGES_BASE:=https://${owner}.github.io/${repo}`) {
+		t.Error("PAGES_BASE 推导写法不符（应为 owner.github.io/repo，无 $(echo) 包裹）")
+	}
+	if strings.Contains(runBody, `${GITHUB_REPOSITORY/\//-}.github.io`) {
+		t.Error("不得再用 owner/repo 整体替换为 - 的旧推导（C1 回归）")
 	}
 }
 

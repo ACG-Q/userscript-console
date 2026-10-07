@@ -194,8 +194,11 @@ runs:
         USM_ACTION_PATH="${{ github.action_path }}"
 
         # PAGES_BASE 自动推导：https://<owner>.github.io/<repo>
-        # GITHUB_REPOSITORY 格式为 "owner/repo"，把 / 换成 -（github.io 的写法）
-        : "${PAGES_BASE:=https://${GITHUB_REPOSITORY/\//-}.github.io}"
+        # GITHUB_REPOSITORY 格式为 "owner/repo"
+        owner_repo=(${GITHUB_REPOSITORY//\// })
+        owner="${owner_repo[0]}"
+        repo="${owner_repo[1]}"
+        : "${PAGES_BASE:=https://${owner}.github.io/${repo}}"
         export PAGES_BASE
 
         # 子命令白名单（未知值 exit 2；不拼接用户输入）
