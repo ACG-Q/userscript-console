@@ -2,6 +2,7 @@ package pages
 
 import (
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"os"
 	"path/filepath"
@@ -544,7 +545,7 @@ func TestBuildLinksAreRelative(t *testing.T) {
 		{"首页脚本卡", out.IndexHTML, `href="scripts/`, `href="/scripts/`},
 		{"首页命令归档导航", out.IndexHTML, `href="commands/page-1.html"`, `href="/commands`},
 		{"详情页返回首页", out.DetailHTMLs["self01"], `href="../"`, `href="/"`},
-		{"命令页返回列表", out.CommandPages[1], `href="index.html"`, `{{.Base}}`},
+		{"命令页返回列表", out.CommandPages[1], `href="../index.html"`, `{{.Base}}`},
 		{"命令索引分页链接", out.CommandsIndex, `href="page-1.html"`, `/commands/?cmd=`},
 	}
 	for _, c := range cases {
@@ -647,5 +648,101 @@ func TestIndexJSGuardsMissingLoadMore(t *testing.T) {
 	}
 	if !strings.Contains(out.IndexHTML, "if (btn)") || !strings.Contains(out.IndexHTML, "if (lm)") {
 		t.Errorf("index JS 缺少 loadMore 元素的 null 守卫:\n%s", out.IndexHTML)
+	}
+}
+
+// writeCommandsArchive 在 opts.Out 的父目录写 archive/commands.json（renderCommands 探测路径约定）。
+func writeCommandsArchive(t *testing.T, out, archiveJSON string) {
+	t.Helper()
+	archiveDir := filepath.Join(filepath.Dir(filepath.Clean(out)), "archive")
+	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(archiveDir, "commands.json"), []byte(archiveJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestCommandsGlobalPagination 全局倒序整组分页：12 组 / 每页 5 → 3 页（对齐 build_pages.py，I7①）。
+func TestCommandsGlobalPagination(t *testing.T) {
+	reg := buildTestRegistry(t)
+	outDir := t.TempDir()
+	var groups []string
+	for i := 1; i <= 12; i++ {
+		created := fmt.Sprintf("2026-01-%02dT00:00:00Z", i)
+		groups = append(groups, fmt.Sprintf(
+			`{"command":"cmd%02d","author":"u","created_at":"%s","results":[{"id":"r%02d","author":"u","body":"mark-%02d","created_at":"%s"}]}`,
+			i, created, i, i, created))
+	}
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[`+strings.Join(groups, ",")+`]}`)
+
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://t.example/x", CommandsPerPage: 5}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.CommandPages) != 3 {
+		t.Fatalf("12 组 / 每页 5 应产 3 页, got %d", len(out.CommandPages))
+	}
+	for _, p := range []int{1, 2, 3} {
+		if out.CommandPages[p] == "" {
+			t.Errorf("page-%d 不应为空", p)
+		}
+	}
+	if !strings.Contains(out.CommandPages[1], "mark-12") {
+		t.Errorf("page1 应含最新组（cmd12）")
+	}
+	if strings.Contains(out.CommandPages[1], "mark-01") {
+		t.Errorf("page1 不应含最旧组（cmd01）")
+	}
+	if !strings.Contains(out.CommandPages[3], "mark-01") {
+		t.Errorf("page3 应含最旧组（cmd01）")
+	}
+	if !strings.Contains(out.CommandPages[1], "第 1/3 页") {
+		t.Errorf("page1 stat 应显示 第 1/3 页:\n%s", out.CommandPages[1])
+	}
+}
+
+// TestCommandsIndexMetaRefresh commands/index.html 必须是 meta-refresh 跳转页（I7②）。
+func TestCommandsIndexMetaRefresh(t *testing.T) {
+	reg := buildTestRegistry(t)
+	outDir := t.TempDir()
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[{"command":"add","author":"u","created_at":"2026-01-01T00:00:00Z","results":[{"id":"r1","author":"u","body":"/add x","created_at":"2026-01-01T00:00:00Z"}]}]}`)
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://t.example/x"}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.CommandsIndex, `<meta http-equiv="refresh"`) ||
+		!strings.Contains(out.CommandsIndex, "url=page-1.html") {
+		t.Errorf("commands/index.html 应为 meta-refresh 跳转页:\n%s", out.CommandsIndex)
+	}
+}
+
+// TestArchiveNavLinks 首页与详情页均须有归档导航（相对路径，I7③）。
+func TestArchiveNavLinks(t *testing.T) {
+	reg := buildTestRegistry(t)
+	outDir := t.TempDir()
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[{"command":"add","author":"u","created_at":"2026-01-01T00:00:00Z","results":[{"id":"r1","author":"u","body":"/add x","created_at":"2026-01-01T00:00:00Z"}]}]}`)
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://t.example/x"}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.IndexHTML, `href="commands/page-1.html"`) {
+		t.Errorf("首页应含归档导航 href=commands/page-1.html")
+	}
+	if !strings.Contains(out.DetailHTMLs["self01"], `href="../commands/page-1.html"`) {
+		t.Errorf("详情页应含归档导航 href=../commands/page-1.html")
+	}
+}
+
+// TestIndexBatchInitialHide 服务端全量渲染：index JS 初始只显示前 batch 条（I7④）。
+func TestIndexBatchInitialHide(t *testing.T) {
+	reg := buildTestRegistry(t)
+	out, err := Build(reg, Options{Out: t.TempDir(), PagesBase: "https://t.example/x"}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.IndexHTML, "for (var i = batch; i < cards.length; i++)") ||
+		!strings.Contains(out.IndexHTML, "cards[i].style.display = 'none'") {
+		t.Errorf("index JS 缺少初始隐藏逻辑:\n%s", out.IndexHTML)
 	}
 }

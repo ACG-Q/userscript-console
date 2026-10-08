@@ -112,7 +112,7 @@ func Build(reg *registry.Registry, opts Options, data Data) (Outcome, error) {
 	out.Pages += len(cp) + 1
 
 	// index.html
-	idx, err := renderIndex(active, opts, reg, len(cp) > 0)
+	idx, err := renderIndex(active, opts, reg)
 	if err != nil {
 		return out, err
 	}
@@ -223,14 +223,13 @@ type scriptCard struct {
 }
 
 type indexPageData struct {
-	Scripts     []scriptCard
-	Total       int
-	Batch       int
-	PagesBase   string
-	HasCommands bool
+	Scripts   []scriptCard
+	Total     int
+	Batch     int
+	PagesBase string
 }
 
-func renderIndex(scripts []registry.Script, opts Options, reg *registry.Registry, hasCommands bool) (string, error) {
+func renderIndex(scripts []registry.Script, opts Options, reg *registry.Registry) (string, error) {
 	cards := make([]scriptCard, 0, len(scripts))
 	for _, s := range scripts {
 		cards = append(cards, scriptCard{
@@ -244,11 +243,10 @@ func renderIndex(scripts []registry.Script, opts Options, reg *registry.Registry
 		})
 	}
 	data := indexPageData{
-		Scripts:     cards,
-		Total:       len(cards),
-		Batch:       opts.Batch,
-		PagesBase:   opts.PagesBase,
-		HasCommands: hasCommands,
+		Scripts:   cards,
+		Total:     len(cards),
+		Batch:     opts.Batch,
+		PagesBase: opts.PagesBase,
 	}
 	return renderTemplate("index", data)
 }
@@ -372,109 +370,69 @@ type commandEntry struct {
 }
 
 type commandsPageData struct {
-	Command    string
-	Items      []commandEntry
+	Groups     []commandGroup
 	Page       int
 	TotalPages int
 	TotalItems int
 }
 
-type commandsIndexData struct {
-	Commands  []string
-	FirstPage map[string]int
-}
-
+// renderCommands 渲染命令归档：全局倒序整组分页（对齐 build_pages.py build_command_pages），
+// 每页 opts.CommandsPerPage 组；空归档也产空态 page-1；index 为 meta-refresh。
 func renderCommands(opts Options) (map[int]string, string, error) {
 	archivePath := filepath.Join(filepath.Dir(filepath.Clean(opts.Out)), "archive", "commands.json")
 
+	var groups []commandGroup
 	data, err := os.ReadFile(archivePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, "", nil
+	if err == nil {
+		var archive commandArchive
+		if err := json.Unmarshal(data, &archive); err != nil {
+			return nil, "", fmt.Errorf("解析归档失败: %w", err)
 		}
+		groups = archive.Commands
+	} else if !os.IsNotExist(err) {
 		return nil, "", fmt.Errorf("读取归档失败: %w", err)
 	}
 
-	var archive commandArchive
-	if err := json.Unmarshal(data, &archive); err != nil {
-		return nil, "", fmt.Errorf("解析归档失败: %w", err)
+	// ISO8601 字典序即时间序：新→旧
+	sort.Slice(groups, func(i, j int) bool {
+		return groups[i].CreatedAt > groups[j].CreatedAt
+	})
+
+	perPage := opts.CommandsPerPage
+	if perPage <= 0 {
+		perPage = 5
+	}
+	totalPages := (len(groups) + perPage - 1) / perPage
+	if totalPages < 1 {
+		totalPages = 1 // 空归档也产空态 page-1（CUTOVER 空态可达）
 	}
 
-	if len(archive.Commands) == 0 {
-		return nil, "", nil
-	}
-
-	// 按 command 名分组
-	groups := make(map[string][]commandGroup)
-	for _, c := range archive.Commands {
-		groups[c.Command] = append(groups[c.Command], c)
-	}
-
-	// 排序命令名
-	cmdNames := make([]string, 0, len(groups))
-	for name := range groups {
-		cmdNames = append(cmdNames, name)
-	}
-	sort.Strings(cmdNames)
-
-	// 生成分页
-	result := make(map[int]string)
-	firstPage := make(map[string]int)
-	pageNum := 1
-	for _, cmdName := range cmdNames {
-		items := groups[cmdName]
-		// 展平所有结果
-		var allEntries []commandEntry
-		for _, g := range items {
-			allEntries = append(allEntries, g.Results...)
+	result := make(map[int]string, totalPages)
+	for p := 1; p <= totalPages; p++ {
+		start := (p - 1) * perPage
+		end := start + perPage
+		if end > len(groups) {
+			end = len(groups)
 		}
-		// 分页
-		for i := 0; i < len(allEntries); i += opts.CommandsPerPage {
-			end := i + opts.CommandsPerPage
-			if end > len(allEntries) {
-				end = len(allEntries)
-			}
-			page := allEntries[i:end]
-			if _, ok := firstPage[cmdName]; !ok {
-				firstPage[cmdName] = pageNum
-			}
-			html, err := renderCommandPage(cmdName, page, pageNum, (len(allEntries)+opts.CommandsPerPage-1)/opts.CommandsPerPage, len(allEntries))
-			if err != nil {
-				return result, "", err
-			}
-			result[pageNum] = html
-			pageNum++
+		html, err := renderCommandPage(groups[start:end], p, totalPages, len(groups))
+		if err != nil {
+			return result, "", err
 		}
+		result[p] = html
 	}
 
-	// commands/index.html
-	idxHTML, err := renderCommandsIndex(cmdNames, firstPage)
+	idxHTML, err := renderTemplate("commands-index", nil)
 	if err != nil {
 		return result, "", err
 	}
-
 	return result, idxHTML, nil
 }
 
-func renderCommandPage(cmdName string, items []commandEntry, page, total, count int) (string, error) {
+// renderCommandPage 渲染单个命令归档分页（整组混排）。
+func renderCommandPage(groups []commandGroup, page, totalPages, totalItems int) (string, error) {
 	return renderTemplate("commands", commandsPageData{
-		Command:    cmdName,
-		Items:      items,
-		Page:       page,
-		TotalPages: total,
-		TotalItems: count,
+		Groups: groups, Page: page, TotalPages: totalPages, TotalItems: totalItems,
 	})
-}
-
-func renderCommandsIndex(cmdNames []string, firstPage map[string]int) (string, error) {
-	// 无分页（无条目）的命令不列出：模板按 FirstPage 取首页链接
-	visible := make([]string, 0, len(cmdNames))
-	for _, n := range cmdNames {
-		if _, ok := firstPage[n]; ok {
-			visible = append(visible, n)
-		}
-	}
-	return renderTemplate("commands-index", commandsIndexData{Commands: visible, FirstPage: firstPage})
 }
 
 // ── 辅助函数 ─────────────────────────────────────────────────

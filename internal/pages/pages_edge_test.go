@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -123,33 +124,36 @@ func TestBuildWithEmptyCommandsArchive(t *testing.T) {
 	if len(got.BuildWarnings) != 0 {
 		t.Errorf("空归档不应产生告警: %v", got.BuildWarnings)
 	}
-	if len(got.CommandPages) != 0 || got.CommandsIndex != "" {
-		t.Errorf("空归档不应产生命令页: pages=%v index=%q", got.CommandPages, got.CommandsIndex)
+	if len(got.CommandPages) != 1 || got.CommandPages[1] == "" || got.CommandsIndex == "" {
+		t.Errorf("空归档应产空态 page-1 与跳转 index（I7）: pages=%v index=%q", got.CommandPages, got.CommandsIndex)
 	}
 }
 
 func TestBuildCommandPagesPagination(t *testing.T) {
 	_, out := edgeOut(t)
-	archive := `{"schema":1,"commands":[{"command":"add","author":"u","created_at":"2026-10-01T00:00:00Z","results":[` +
-		`{"id":"c1","author":"u","body":"one","created_at":"2026-10-01T00:00:00Z"},` +
-		`{"id":"c2","author":"u","body":"two","created_at":"2026-10-01T00:00:00Z"},` +
-		`{"id":"c3","author":"u","body":"three","created_at":"2026-10-01T00:00:00Z"},` +
-		`{"id":"c4","author":"u","body":"four","created_at":"2026-10-01T00:00:00Z"},` +
-		`{"id":"c5","author":"u","body":"five","created_at":"2026-10-01T00:00:00Z"}]}]}`
+	var groups []string
+	for i := 1; i <= 5; i++ {
+		created := fmt.Sprintf("2026-10-%02dT00:00:00Z", i)
+		groups = append(groups, fmt.Sprintf(
+			`{"command":"cmd%d","author":"u","created_at":"%s","results":[{"id":"c%d","author":"u","body":"body-%d","created_at":"%s"}]}`,
+			i, created, i, i, created))
+	}
+	archive := `{"schema":1,"commands":[` + strings.Join(groups, ",") + `]}`
 	writeEdgeArchive(t, out, archive, false)
 	got, err := Build(buildTestRegistry(t), edgeOptions(out, 2), edgeData())
 	if err != nil {
 		t.Fatal(err)
 	}
+	// 组级整分页（I7①）：5 组、每页 2 组 → 3 页
 	if len(got.CommandPages) != 3 {
-		t.Fatalf("5 条记录、每页 2 条应产出 3 页，实际 %d 页；warnings=%v", len(got.CommandPages), got.BuildWarnings)
+		t.Fatalf("5 组、每页 2 组应产出 3 页，实际 %d 页；warnings=%v", len(got.CommandPages), got.BuildWarnings)
 	}
 	// 第 2 页存在 → 模板中的 sub/add/seq 分页辅助函数被执行
 	if _, ok := got.CommandPages[2]; !ok {
 		t.Errorf("缺少第 2 页: %v", got.CommandPages)
 	}
-	if !strings.Contains(got.CommandsIndex, "add") {
-		t.Errorf("命令索引应含 add: %q", got.CommandsIndex)
+	if !strings.Contains(got.CommandsIndex, "url=page-1.html") {
+		t.Errorf("命令索引应为 meta-refresh 跳转页: %q", got.CommandsIndex)
 	}
 }
 
