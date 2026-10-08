@@ -2,6 +2,7 @@ package pages
 
 import (
 	"encoding/json"
+	"html/template"
 	"os"
 	"path/filepath"
 	"strings"
@@ -586,5 +587,52 @@ func TestRenderMarkdownKeepsSafeHTML(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("安全标记丢失 %q:\n%s", want, out)
 		}
+	}
+}
+
+// TestCommentBodySinglePassAndClipped 评论正文单次处理：渲染后 HTML 不得二次转义，且截断至 400 字（I9）。
+func TestCommentBodySinglePassAndClipped(t *testing.T) {
+	reg := buildTestRegistry(t)
+	opts := Options{Out: t.TempDir(), PagesBase: "https://test.github.io/repo"}
+	data := Data{
+		DiscussionComments: map[string][]Comment{
+			"D_test1": {{Author: "User1", Body: "x <b>y</b>", CreatedAt: "2026-10-05"}},
+		},
+	}
+	out, err := Build(reg, opts, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := ""
+	for _, html := range out.DetailHTMLs {
+		joined += html
+	}
+	if !strings.Contains(joined, "<b>y</b>") {
+		t.Errorf("评论 HTML 未渲染: 缺 <b>y</b>")
+	}
+	if strings.Contains(joined, "&lt;b&gt;") {
+		t.Errorf("评论正文被二次转义: 含 &lt;b&gt;")
+	}
+
+	// 超 400 字正文须截断并以省略号结尾
+	long := strings.Repeat("a", 500)
+	data = Data{
+		DiscussionComments: map[string][]Comment{
+			"D_test1": {{Author: "User1", Body: template.HTML(long), CreatedAt: "2026-10-05"}},
+		},
+	}
+	out, err = Build(reg, opts, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined = ""
+	for _, html := range out.DetailHTMLs {
+		joined += html
+	}
+	if strings.Contains(joined, strings.Repeat("a", 401)) {
+		t.Errorf("评论正文未截断到 400 字")
+	}
+	if !strings.Contains(joined, strings.Repeat("a", 400)+"…") {
+		t.Errorf("截断后应以 400 字 + 省略号结尾")
 	}
 }

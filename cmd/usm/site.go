@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"html/template"
 	"os"
 	"path/filepath"
 	"strings"
@@ -99,7 +100,7 @@ func (b *siteBuilder) fetchData(reg *registry.Registry) (pages.Data, []string) {
 			for _, c := range cs {
 				comments = append(comments, pages.Comment{
 					Author:    c.Author,
-					Body:      c.Body,
+					Body:      template.HTML(c.Body),
 					CreatedAt: c.CreatedAt,
 				})
 			}

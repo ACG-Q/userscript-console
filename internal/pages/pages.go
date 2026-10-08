@@ -66,7 +66,7 @@ type Data struct {
 // Comment 一条版本帖评论。
 type Comment struct {
 	Author    string
-	Body      string
+	Body      template.HTML // 已消毒+截断的可信 HTML（单次处理，D-04）
 	CreatedAt string
 }
 
@@ -171,6 +171,17 @@ func RenderMarkdown(src string) string {
 		return esc(src)
 	}
 	return bluemonday.UGCPolicy().Sanitize(buf.String())
+}
+
+// clipText 折叠空白并按 rune 截断到 limit 字符，超出加省略号
+// （对齐 projec-02 issue_stats.clip）。
+func clipText(s string, limit int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	r := []rune(s)
+	if len(r) <= limit {
+		return s
+	}
+	return string(r[:limit]) + "…"
 }
 
 // ── 模板渲染 ─────────────────────────────────────────────────
@@ -310,7 +321,7 @@ func renderDetail(s registry.Script, opts Options, data Data) (string, error) {
 				for _, c := range cs {
 					item.Comments = append(item.Comments, Comment{
 						Author:    c.Author,
-						Body:      RenderMarkdown(c.Body),
+						Body:      template.HTML(RenderMarkdown(clipText(string(c.Body), 400))),
 						CreatedAt: c.CreatedAt,
 					})
 				}
