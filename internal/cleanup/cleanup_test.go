@@ -351,3 +351,42 @@ func TestMergeArchiveKeepNewest(t *testing.T) {
 		t.Errorf("应保留最新 2 条且旧→新排列，实际 [%s, %s]", results[0].ID, results[1].ID)
 	}
 }
+
+// TestMergeArchiveAssignsCommandIDAndArchivedAt 新组合并必须赋非空幂等键与归档时间（SPEC-DATA §2.3）。
+func TestMergeArchiveAssignsCommandIDAndArchivedAt(t *testing.T) {
+	newResults := map[string][]Result{
+		"add": {{ID: "IR_2", Author: "u", Body: "/add x", CreatedAt: time.Unix(200, 0)}},
+		"rm":  {{ID: "IR_3", Author: "u", Body: "/rm x", CreatedAt: time.Unix(300, 0)}},
+	}
+	got := MergeArchive(nil, newResults, 10)
+	if len(got.Commands) != 2 {
+		t.Fatalf("应合并 2 组, got %d", len(got.Commands))
+	}
+	seen := map[string]bool{}
+	for _, c := range got.Commands {
+		if c.CommandID == "" {
+			t.Errorf("组 %q 缺 command_id", c.Command)
+		}
+		if seen[c.CommandID] {
+			t.Errorf("command_id 重复: %s", c.CommandID)
+		}
+		seen[c.CommandID] = true
+		if c.ArchivedAt.IsZero() {
+			t.Errorf("组 %q 缺 archived_at", c.Command)
+		}
+	}
+}
+
+// TestMergeArchiveBackfillsLegacyCommandID 旧归档（无 command_id）合并时按最老 result 回填。
+func TestMergeArchiveBackfillsLegacyCommandID(t *testing.T) {
+	existing := &Archive{Schema: 1, Commands: []CommandKey{
+		{Command: "add", Results: []Result{{ID: "IR_old", CreatedAt: time.Unix(100, 0)}}},
+	}}
+	got := MergeArchive(existing, nil, 10)
+	if len(got.Commands) != 1 {
+		t.Fatalf("应保留 1 组, got %d", len(got.Commands))
+	}
+	if got.Commands[0].CommandID == "" {
+		t.Error("旧条目应按最老 result ID 回填 command_id")
+	}
+}

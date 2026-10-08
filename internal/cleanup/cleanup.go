@@ -20,10 +20,12 @@ type Archive struct {
 
 // CommandKey 按命令名分组的归档条目。
 type CommandKey struct {
-	Command   string    `json:"command"`
-	Author    string    `json:"author"`
-	CreatedAt time.Time `json:"created_at"`
-	Results   []Result  `json:"results"`
+	Command    string    `json:"command"`
+	Author     string    `json:"author"`
+	CreatedAt  time.Time `json:"created_at"`
+	CommandID  string    `json:"command_id"`  // 幂等键：组内最老评论的 NodeID（SPEC-DATA §2.3）
+	ArchivedAt time.Time `json:"archived_at"` // 首次归档时间
+	Results    []Result  `json:"results"`
 }
 
 // Result 单次命令执行结果。
@@ -161,11 +163,28 @@ func MergeArchive(existing *Archive, newResults map[string][]Result, keep int) *
 		sort.Slice(results, func(i, j int) bool {
 			return results[i].CreatedAt.Before(results[j].CreatedAt)
 		})
+		// 幂等键与归档时间（SPEC-DATA §2.3；新老条目统一在此赋值）
+		commandID := ""
+		if len(results) > 0 {
+			commandID = results[0].ID // 已按旧→新排：最老 = 首元素
+		}
+		archivedAt := time.Now().UTC()
+		for _, old := range existing.Commands {
+			if old.Command == cmd && old.CommandID != "" {
+				commandID = old.CommandID // 保留既有幂等键
+				if !old.ArchivedAt.IsZero() {
+					archivedAt = old.ArchivedAt
+				}
+				break
+			}
+		}
 		commands = append(commands, CommandKey{
-			Command:   cmd,
-			Results:   results,
-			Author:    results[0].Author,
-			CreatedAt: results[0].CreatedAt,
+			Command:    cmd,
+			Results:    results,
+			Author:     results[0].Author,
+			CreatedAt:  results[0].CreatedAt,
+			CommandID:  commandID,
+			ArchivedAt: archivedAt,
 		})
 	}
 	sort.Slice(commands, func(i, j int) bool {

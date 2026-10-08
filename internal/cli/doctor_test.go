@@ -358,3 +358,39 @@ func TestDoctorDeletedSyncedMissingSrc(t *testing.T) {
 		t.Errorf("应报已删仍存源码: %v", probs)
 	}
 }
+
+// TestDoctorArchive空commandID不误报 旧归档无 command_id 不得误报重复；非空相同必须报（I12）。
+func TestDoctorArchive空commandID不误报(t *testing.T) {
+	root := buildRepo(t)
+	dir := filepath.Join(root, "archive")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := `{"schema":1,"commands":[
+		{"command":"add","results":[{"id":"IR_1"}]},
+		{"command":"rm","results":[{"id":"IR_2"}]}]}`
+	if err := os.WriteFile(filepath.Join(dir, "commands.json"), []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range doctorProblems(root) {
+		if ContainsAll(p, "重复 command_id") {
+			t.Errorf("旧归档空 command_id 不应报重复: %s", p)
+		}
+	}
+
+	dup := `{"schema":1,"commands":[
+		{"command":"add","command_id":"IC_1","results":[{"id":"IR_1"}]},
+		{"command":"rm","command_id":"IC_1","results":[{"id":"IR_2"}]}]}`
+	if err := os.WriteFile(filepath.Join(dir, "commands.json"), []byte(dup), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, p := range doctorProblems(root) {
+		if ContainsAll(p, "重复 command_id", "IC_1") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("非空相同 command_id 应报重复")
+	}
+}

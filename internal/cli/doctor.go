@@ -136,6 +136,9 @@ func doctorProblems(root string) []string {
 		} else {
 			seen := map[string]bool{}
 			for _, c := range arch.Commands {
+				if c.CommandID == "" {
+					continue // 旧归档无幂等键：跳过（下轮 cleanup 合并时回填）
+				}
 				if seen[c.CommandID] {
 					add("archive/commands.json 存在重复 command_id: %s", c.CommandID)
 				}
