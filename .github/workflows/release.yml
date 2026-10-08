@@ -36,6 +36,34 @@ env:
   USM_VERSION: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
 
 jobs:
+  # ── 0. 质量门禁（无此 job 绿，不准发布；对应基线 I1） ─────────
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "gofmt 需要格式化:"; echo "$out"; exit 1; fi
+      - name: vet
+        run: go vet ./...
+      - name: 测试 + 覆盖率门禁
+        run: |
+          go test ./... -covermode=atomic -coverprofile=cover.out
+          go tool cover -func=cover.out | tail -1
+          pct=$(go tool cover -func=cover.out | tail -1 | grep -oE '[0-9.]+%' | tr -d '%')
+          echo "pct='$pct'"
+          awk -v p="$pct" 'BEGIN{exit !(p>=90)}'
+          echo "coverage gate passed"
+      - name: 快照门禁
+        run: go run ./cmd/usm snapshot check
+      - name: 编译自检
+        run: go build ./...
+
   # ── 1. 编译矩阵（并发安全） ────────────────────────────────────
   build:
     name: build ${{ matrix.goos }}-${{ matrix.goarch }}
@@ -102,7 +130,7 @@ jobs:
 
   # ── 2. 汇总 + 校验和 + 发布（不回填 action.yml） ─────────────
   publish:
-    needs: build
+    needs: [build, test]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
