@@ -3,7 +3,6 @@ package commands
 import (
 	"strings"
 
-	"github.com/acg-q/userscript-console/internal/registry"
 	"github.com/acg-q/userscript-console/internal/script"
 )
 
@@ -46,11 +45,12 @@ func runRm(env *Env, args string, codeBlocks []string) (Result, error) {
 		return Result{}, err
 	}
 
-	// 移除脚本文件（如果是 self 类型）
-	if s.Type == registry.TypeSelf {
-		if err := script.RemoveSource(env.Root, s.ID, s.Type); err != nil {
-			return reply(changed, "⚠️ 已软删除脚本 %q，但清理文件失败: %v", s.Name, err)
-		}
+	// 移除源码与分发产物（self/synced 同待遇；对齐 Python _soft_delete，doctor 双删校验）
+	if err := script.RemoveSource(env.Root, s.ID, s.Type); err != nil {
+		return reply(changed, "❌ 已软删除脚本 %q，但源文件失败: %v", s.Name, err)
+	}
+	if err := script.RemoveDist(env.Root, s.ID); err != nil {
+		return reply(changed, "❌ 已软删除脚本 %q，但分发产物失败: %v", s.Name, err)
 	}
 
 	return reply(changed, "✅ 已软删除脚本 %q（ID: %s，支持 /add 复活）", s.Name, s.ID)

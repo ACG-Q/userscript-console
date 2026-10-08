@@ -792,3 +792,44 @@ func TestSyncWritesDist(t *testing.T) {
 		t.Errorf("dist 应含安装地址，实际:\n%s", got)
 	}
 }
+
+// TestRmRemovesSourceAndDistForBothTypes self/synced 的 /rm 须同时删源码与 dist（对齐 doctor 双删校验，I13）。
+func TestRmRemovesSourceAndDistForBothTypes(t *testing.T) {
+	env, _ := buildTestEnvWithFake(t)
+
+	if err := script.WriteSource(env.Root, "self01", registry.TypeSelf, "// self"); err != nil {
+		t.Fatal(err)
+	}
+	if err := script.WriteSource(env.Root, "sync01", registry.TypeSynced, "// synced"); err != nil {
+		t.Fatal(err)
+	}
+	if err := script.WriteDist(env.Root, "self01", "// self"); err != nil {
+		t.Fatal(err)
+	}
+	if err := script.WriteDist(env.Root, "sync01", "// synced"); err != nil {
+		t.Fatal(err)
+	}
+
+	exists := func(path string) bool {
+		_, err := os.Stat(path)
+		return !os.IsNotExist(err)
+	}
+	srcPath := func(key string) string {
+		rel := script.SelfSourcePath(key)
+		if key == "sync01" {
+			rel = script.SyncedSourcePath(key)
+		}
+		return filepath.Join(env.Root, filepath.FromSlash(rel))
+	}
+	for _, key := range []string{"self01", "sync01"} {
+		if _, err := Execute("rm", env, key, nil); err != nil {
+			t.Fatalf("rm %s 失败: %v", key, err)
+		}
+		if exists(srcPath(key)) {
+			t.Errorf("%s 源码应已删除", key)
+		}
+		if exists(filepath.Join(env.Root, filepath.FromSlash(script.DistPath(key)))) {
+			t.Errorf("%s dist 应已删除", key)
+		}
+	}
+}
