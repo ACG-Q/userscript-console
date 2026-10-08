@@ -23,6 +23,7 @@ import (
 
 	"github.com/acg-q/userscript-console/internal/registry"
 	"github.com/acg-q/userscript-console/internal/times"
+	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
 	htmlmd "github.com/yuin/goldmark/renderer/html"
 )
@@ -156,19 +157,20 @@ func Build(reg *registry.Registry, opts Options, data Data) (Outcome, error) {
 	return out, nil
 }
 
-// RenderMarkdown 使用 goldmark + 基础消毒渲染 Markdown 为 HTML。
+// RenderMarkdown 使用 goldmark 渲染 Markdown，并用 bluemonday UGCPolicy 消毒
+// （规格 D-04：WithUnsafe 放行原始 HTML 后必须过 bluemonday，黑名单手写不可靠）。
 func RenderMarkdown(src string) string {
 	var buf bytes.Buffer
 	md := goldmark.New(
 		goldmark.WithExtensions(),
 		goldmark.WithRendererOptions(
-			htmlmd.WithUnsafe(), // 允许原始 HTML
+			htmlmd.WithUnsafe(), // 允许原始 HTML，交给 bluemonday 兜底消毒
 		),
 	)
 	if err := md.Convert([]byte(src), &buf); err != nil {
 		return esc(src)
 	}
-	return sanitizeDangerous(buf.String())
+	return bluemonday.UGCPolicy().Sanitize(buf.String())
 }
 
 // ── 模板渲染 ─────────────────────────────────────────────────
@@ -478,20 +480,6 @@ func filterActive(scripts []registry.Script) []registry.Script {
 
 func esc(s string) string {
 	return template.HTMLEscapeString(s)
-}
-
-// sanitizeDangerous 移除危险 HTML 标签
-func sanitizeDangerous(html string) string {
-	dangerous := []string{
-		"<script", "</script>",
-		"<object", "</object>",
-		"<embed", "</embed>",
-		"<form", "</form>",
-	}
-	for _, tag := range dangerous {
-		html = strings.ReplaceAll(html, tag, "")
-	}
-	return html
 }
 
 // readTemplates 返回 templates/ 目录的文件列表

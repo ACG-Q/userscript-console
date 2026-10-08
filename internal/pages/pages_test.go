@@ -292,17 +292,6 @@ func TestEscHTML(t *testing.T) {
 	}
 }
 
-func TestSanitizeDangerous(t *testing.T) {
-	input := `<p>正常</p><script>alert(1)</script><div>也正常</div>`
-	got := sanitizeDangerous(input)
-	if strings.Contains(got, "<script>") {
-		t.Errorf("sanitizeDangerous 应移除 script: %s", got)
-	}
-	if !strings.Contains(got, "<p>正常</p>") {
-		t.Errorf("sanitizeDangerous 应保留 p: %s", got)
-	}
-}
-
 func TestBuildCommandPages(t *testing.T) {
 	reg := buildTestRegistry(t)
 	opts := Options{
@@ -563,6 +552,39 @@ func TestBuildLinksAreRelative(t *testing.T) {
 		}
 		if strings.Contains(c.html, c.forbid) {
 			t.Errorf("%s 不应含 %q", c.name, c.forbid)
+		}
+	}
+}
+
+// TestRenderMarkdownSanitizesXSS XSS 用例硬验收（规格 D-04/DR-6）：危险载荷必须被消毒。
+func TestRenderMarkdownSanitizesXSS(t *testing.T) {
+	cases := []string{
+		`<script>alert(1)</script>ok`,
+		`<img src=x onerror="alert(1)">`,
+		`<svg onload=alert(1)></svg>`,
+		`<iframe src="https://evil"></iframe>`,
+		`[x](javascript:alert(1))`,
+		`<a href="javascript:alert(1)">x</a>`,
+		`<object data="e"></object><embed src="e">`,
+		`<form action="e"><input name="a"></form>`,
+	}
+	for _, src := range cases {
+		out := RenderMarkdown(src)
+		low := strings.ToLower(out)
+		for _, bad := range []string{"<script", "onerror=", "onload=", "<iframe", "javascript:", "<object", "<embed", "<form"} {
+			if strings.Contains(low, bad) {
+				t.Errorf("源 %q 未被消毒，输出含 %q:\n%s", src, bad, out)
+			}
+		}
+	}
+}
+
+// TestRenderMarkdownKeepsSafeHTML 消毒不得误伤安全标记。
+func TestRenderMarkdownKeepsSafeHTML(t *testing.T) {
+	out := RenderMarkdown("**粗体** [链接](https://example.com) `code`")
+	for _, want := range []string{"<strong>", "href=\"https://example.com\"", "<code>"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("安全标记丢失 %q:\n%s", want, out)
 		}
 	}
 }
