@@ -44,7 +44,7 @@ func TestRawNilContext(t *testing.T) {
 func TestRawTransportErrorRetriesExhausted(t *testing.T) {
 	d := &fakeDoer{t: t, resps: []resp{{0, "", errors.New("connection refused")}}}
 	c := newTestClient(t, d, WithRetry(0))
-	if err := c.Raw(context.Background(), `query { viewer }`, nil, nil); err == nil || !strings.Contains(err.Error(), "请求失败") {
+	if err := c.Raw(context.Background(), `query { viewer { login } }`, nil, nil); err == nil || !strings.Contains(err.Error(), "请求失败") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -56,7 +56,7 @@ func TestRawTransportErrorContextCanceled(t *testing.T) {
 		return nil, errors.New("连接被重置")
 	})
 	c := newTestClient(t, d)
-	if err := c.Raw(ctx, `query { viewer }`, nil, nil); !errors.Is(err, context.Canceled) {
+	if err := c.Raw(ctx, `query { viewer { login } }`, nil, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }
@@ -65,7 +65,7 @@ func TestRawSleepInterruptedOnTransportError(t *testing.T) {
 	d := &fakeDoer{t: t, resps: []resp{{0, "", errors.New("connection refused")}}}
 	c, ctx, cancel := newCancelDuringSleep(t, d)
 	defer cancel()
-	if err := c.Raw(ctx, `query { viewer }`, nil, nil); !errors.Is(err, context.Canceled) {
+	if err := c.Raw(ctx, `query { viewer { login } }`, nil, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("退避等待应被 ctx 打断, err = %v", err)
 	}
 }
@@ -74,7 +74,7 @@ func TestRawSleepInterruptedOn5xx(t *testing.T) {
 	d := &fakeDoer{t: t, resps: []resp{{500, "server error", nil}}}
 	c, ctx, cancel := newCancelDuringSleep(t, d)
 	defer cancel()
-	if err := c.Raw(ctx, `query { viewer }`, nil, nil); !errors.Is(err, context.Canceled) {
+	if err := c.Raw(ctx, `query { viewer { login } }`, nil, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }
@@ -83,7 +83,7 @@ func TestRawSleepInterruptedOn4xxRateLimit(t *testing.T) {
 	d := &fakeDoer{t: t, resps: []resp{{403, "API rate limit exceeded", nil}}}
 	c, ctx, cancel := newCancelDuringSleep(t, d)
 	defer cancel()
-	if err := c.Raw(ctx, `query { viewer }`, nil, nil); !errors.Is(err, context.Canceled) {
+	if err := c.Raw(ctx, `query { viewer { login } }`, nil, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }
@@ -92,7 +92,7 @@ func TestRawSleepInterruptedOn200RateLimit(t *testing.T) {
 	d := &fakeDoer{t: t, resps: []resp{{200, errBody("You have exceeded a secondary rate limit"), nil}}}
 	c, ctx, cancel := newCancelDuringSleep(t, d)
 	defer cancel()
-	if err := c.Raw(ctx, `query { viewer }`, nil, nil); !errors.Is(err, context.Canceled) {
+	if err := c.Raw(ctx, `query { viewer { login } }`, nil, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }
@@ -103,7 +103,7 @@ func TestRawDataDecodeError(t *testing.T) {
 	var out struct {
 		X int `json:"x"`
 	}
-	if err := c.Raw(context.Background(), `query { viewer }`, nil, &out); err == nil || !strings.Contains(err.Error(), "响应解码失败") {
+	if err := c.Raw(context.Background(), `query { viewer { login } }`, nil, &out); err == nil || !strings.Contains(err.Error(), "响应解码失败") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -112,7 +112,7 @@ func TestRaw4xxBodySnippetTruncated(t *testing.T) {
 	long := strings.Repeat("x", 500)
 	d := &fakeDoer{t: t, resps: []resp{{404, long, nil}}}
 	c := newTestClient(t, d, WithRetry(0))
-	err := c.Raw(context.Background(), `query { viewer }`, nil, nil)
+	err := c.Raw(context.Background(), `query { viewer { login } }`, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "…") {
 		t.Fatalf("超长 body 应截断为 300 字符 + …, err = %v", err)
 	}
@@ -121,7 +121,7 @@ func TestRaw4xxBodySnippetTruncated(t *testing.T) {
 func TestRawPayloadMarshalError(t *testing.T) {
 	d := &fakeDoer{t: t}
 	c := newTestClient(t, d, WithRetry(0))
-	err := c.Raw(context.Background(), `query { viewer }`, map[string]any{"bad": make(chan int)}, nil)
+	err := c.Raw(context.Background(), `query { viewer { login } }`, map[string]any{"bad": make(chan int)}, nil)
 	if err == nil || !strings.Contains(err.Error(), "请求失败") {
 		t.Fatalf("chan 不可序列化应报错, err = %v", err)
 	}
@@ -130,7 +130,7 @@ func TestRawPayloadMarshalError(t *testing.T) {
 func TestRawInvalidEndpoint(t *testing.T) {
 	d := &fakeDoer{t: t}
 	c := newTestClient(t, d, WithRetry(0), WithEndpoint("%"))
-	if err := c.Raw(context.Background(), `query { viewer }`, nil, nil); err == nil || !strings.Contains(err.Error(), "请求失败") {
+	if err := c.Raw(context.Background(), `query { viewer { login } }`, nil, nil); err == nil || !strings.Contains(err.Error(), "请求失败") {
 		t.Fatalf("非法 endpoint 应报错, err = %v", err)
 	}
 }
@@ -140,7 +140,7 @@ func TestDoOnceBodyReadError(t *testing.T) {
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(badReader{})}, nil
 	})
 	c := newTestClient(t, d, WithRetry(0))
-	if err := c.Raw(context.Background(), `query { viewer }`, nil, nil); err == nil || !strings.Contains(err.Error(), "请求失败") {
+	if err := c.Raw(context.Background(), `query { viewer { login } }`, nil, nil); err == nil || !strings.Contains(err.Error(), "请求失败") {
 		t.Fatalf("读 body 失败应报错, err = %v", err)
 	}
 }

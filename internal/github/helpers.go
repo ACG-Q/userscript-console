@@ -335,7 +335,7 @@ func (c *Client) ListIssueComments(ctx context.Context, number, pageSize int) ([
 // DeleteComment 删除评论（清理器）。payload 恒成功即 nil。
 func (c *Client) DeleteComment(ctx context.Context, nodeID string) error {
 	var out struct {
-		DeleteComment json.RawMessage `json:"deleteComment"`
+		DeleteComment json.RawMessage `json:"deleteIssueComment"`
 	}
 	if err := c.Raw(ctx, DELETE_COMMENT_MUTATION, map[string]any{"commentId": nodeID}, &out); err != nil {
 		return fmt.Errorf("DeleteComment: %w", err)

@@ -94,7 +94,7 @@ func TestCleanupWithApplyAndDelete(t *testing.T) {
 			return string(b)
 		}(),
 		// DELETE_COMMENT_MUTATION 响应（keep=1 仅删 new1 一条）
-		`{"data":{"deleteComment":{"clientMutationId":"x"}}}`,
+		`{"data":{"deleteIssueComment":{"clientMutationId":"x"}}}`,
 	)
 
 	env := &Env{

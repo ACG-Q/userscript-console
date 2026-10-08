@@ -306,7 +306,7 @@ func Test固定查询文档回归锁(t *testing.T) {
 		"UPDATE_MUTATION":         {"updateIssue(input:"},
 		"CLOSE_MUTATION":          {"closeIssue(input:"},
 		"REOPEN_MUTATION":         {"reopenIssue(input:"},
-		"DELETE_COMMENT_MUTATION": {"deleteComment(input:"},
+		"DELETE_COMMENT_MUTATION": {"deleteIssueComment(input:"},
 	}
 	for name, subs := range must {
 		for _, s := range subs {
@@ -531,7 +531,7 @@ func TestListIssueComments分页与null(t *testing.T) {
 
 func TestDeleteComment(t *testing.T) {
 	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{
-		"deleteComment": map[string]any{"clientMutationId": nil},
+		"deleteIssueComment": map[string]any{"clientMutationId": nil},
 	}), nil}}}
 	c := newTestClient(t, d)
 	if err := c.DeleteComment(context.Background(), "IC_1"); err != nil {
@@ -780,7 +780,7 @@ func TestCreateLabelNetworkError(t *testing.T) {
 
 func TestDeleteCommentSuccess(t *testing.T) {
 	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{
-		"deleteComment": map[string]any{"clientMutationId": "x"},
+		"deleteIssueComment": map[string]any{"clientMutationId": "x"},
 	}), nil}}}
 	c := newTestClient(t, d)
 	if err := c.DeleteComment(context.Background(), "IC_1"); err != nil {

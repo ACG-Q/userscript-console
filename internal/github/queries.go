@@ -10,8 +10,9 @@ import (
 // 动态批量统计走 BuildStatsQuery 模板，不 codegen）。
 // 每个常量上方注释其消费者。
 //
-// ⚠️ 外部事实备注：DELETE_COMMENT_MUTATION 的根字段按 `deleteComment` 实现，
-// 待接入真实 schema 校验工具（CI）后复核（测试按常量自身根字段锁定，不依赖外部真值）。
+// ⚠️ 外部事实备注：DELETE_COMMENT_MUTATION 的根字段经真实 schema 校验
+// （tools/validate_graphql.py）确认为 `deleteIssueComment`，已按官方 schema 修正
+// （原按 `deleteComment` 实现为误传；测试按常量自身根字段锁定）。
 
 const (
 	// REPO_QUERY —— GetIssue / repoID()（CREATE_* 系列取 repositoryId）。
@@ -103,7 +104,7 @@ mutation($issueId: ID!, $title: String!, $body: String!) {
 	// CLOSE_MUTATION —— CloseIssue（墓碑化）。
 	CLOSE_MUTATION = `
 mutation($issueId: ID!) {
-  closeIssue(input: {id: $issueId}) {
+  closeIssue(input: {issueId: $issueId}) {
     issue { id number state }
   }
 }`
@@ -111,7 +112,7 @@ mutation($issueId: ID!) {
 	// REOPEN_MUTATION —— ReopenIssue（复活重开）。
 	REOPEN_MUTATION = `
 mutation($issueId: ID!) {
-  reopenIssue(input: {id: $issueId}) {
+  reopenIssue(input: {issueId: $issueId}) {
     issue { id number state }
   }
 }`
@@ -169,10 +170,10 @@ query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   }
 }`
 
-	// DELETE_COMMENT_MUTATION —— DeleteComment（清理器）。
+	// DELETE_COMMENT_MUTATION —— DeleteComment（清理器）；根字段 deleteIssueComment。
 	DELETE_COMMENT_MUTATION = `
 mutation($commentId: ID!) {
-  deleteComment(input: {id: $commentId}) {
+  deleteIssueComment(input: {id: $commentId}) {
     clientMutationId
   }
 }`
