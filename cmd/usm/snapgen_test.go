@@ -18,12 +18,16 @@ func TestBuildSiteSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("生成站点快照失败: %v", err)
 	}
-	for _, name := range []string{"site/index.html", "site/scripts.json", "site/build-warnings.txt"} {
+	for _, name := range []string{
+		"site/index.html", "site/scripts.json", "site/build-warnings.txt",
+		"site/commands/index.html", "site/commands/page-1.html",
+	} {
 		if files[name] == "" {
 			t.Errorf("快照 %s 不应为空", name)
 		}
 	}
-	if len(files) < 3+len(reg.Scripts) {
+	// 3 骨架 + commands 分页(2) + 每脚本详情页 1
+	if len(files) < 5+len(reg.Scripts) {
 		t.Errorf("应含全部详情页, got %d 个文件", len(files))
 	}
 
