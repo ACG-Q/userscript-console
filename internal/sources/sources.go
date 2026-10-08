@@ -125,7 +125,7 @@ func HTTPGet(ctx context.Context, d Doer, rawurl string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sources: 请求失败 %s: %w", rawurl, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return nil, fmt.Errorf("sources: %s 返回非 2xx 状态码 %d", rawurl, resp.StatusCode)
 	}

@@ -16,10 +16,14 @@ func buildRepo(t *testing.T) string {
 	reg := &registry.Registry{
 		Schema: registry.SchemaVersion,
 		Scripts: []registry.Script{
-			{ID: "self01", Type: registry.TypeSelf, Name: "A", Version: "1.0.0", Enabled: true,
-				Match: []string{}, Grant: []string{}, Changelog: []registry.ChangelogEntry{}, Discussions: []registry.DiscussionEntry{}},
-			{ID: "sync01", Type: registry.TypeSynced, Name: "B", Version: "2.0.0", Enabled: true,
-				Match: []string{}, Grant: []string{}, Changelog: []registry.ChangelogEntry{}, Discussions: []registry.DiscussionEntry{}},
+			{
+				ID: "self01", Type: registry.TypeSelf, Name: "A", Version: "1.0.0", Enabled: true,
+				Match: []string{}, Grant: []string{}, Changelog: []registry.ChangelogEntry{}, Discussions: []registry.DiscussionEntry{},
+			},
+			{
+				ID: "sync01", Type: registry.TypeSynced, Name: "B", Version: "2.0.0", Enabled: true,
+				Match: []string{}, Grant: []string{}, Changelog: []registry.ChangelogEntry{}, Discussions: []registry.DiscussionEntry{},
+			},
 		},
 	}
 	if err := reg.Save(filepath.Join(root, "registry.json")); err != nil {
@@ -209,8 +213,8 @@ func TestRunDoctor退出码(t *testing.T) {
 
 // TestEnvOr 测试环境变量读取。
 func TestEnvOr(t *testing.T) {
-	os.Setenv("TEST_CLI_ENV_OR_X", "hello")
-	defer os.Unsetenv("TEST_CLI_ENV_OR_X")
+	_ = os.Setenv("TEST_CLI_ENV_OR_X", "hello")
+	defer func() { _ = os.Unsetenv("TEST_CLI_ENV_OR_X") }()
 	if got := EnvOr("TEST_CLI_ENV_OR_X", "default"); got != "hello" {
 		t.Errorf("EnvOr = %q, want hello", got)
 	}
@@ -221,8 +225,8 @@ func TestEnvOr(t *testing.T) {
 
 // TestEnvInt 测试 envInt 路径。
 func TestEnvInt(t *testing.T) {
-	os.Setenv("TEST_CLI_ENVINT_X", "42")
-	defer os.Unsetenv("TEST_CLI_ENVINT_X")
+	_ = os.Setenv("TEST_CLI_ENVINT_X", "42")
+	defer func() { _ = os.Unsetenv("TEST_CLI_ENVINT_X") }()
 	// envInt 未导出，通过 RunDoctor 间接覆盖（无相关 env）
 	// 直接测试 boolToInt
 	if got := boolToInt(true); got != 1 {

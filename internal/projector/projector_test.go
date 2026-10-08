@@ -106,8 +106,10 @@ func TestProjectDeletedScript(t *testing.T) {
 	r := &registry.Registry{
 		Schema: registry.SchemaVersion,
 		Scripts: []registry.Script{
-			{ID: "del1", Type: registry.TypeSelf, Name: "已删", Version: "1.0.0", Enabled: true, Deleted: true,
-				Issue: &registry.IssueRef{NodeID: "I_del"}},
+			{
+				ID: "del1", Type: registry.TypeSelf, Name: "已删", Version: "1.0.0", Enabled: true, Deleted: true,
+				Issue: &registry.IssueRef{NodeID: "I_del"},
+			},
 		},
 	}
 	env := &Env{Root: "/tmp", RepoOwner: "o", GHClient: ghc}

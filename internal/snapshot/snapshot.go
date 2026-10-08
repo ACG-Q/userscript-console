@@ -144,7 +144,8 @@ func normalize(s string) string {
 
 func readTree(dir string) map[string]string {
 	out := map[string]string{}
-	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	// 逐文件 best-effort 读取：任一文件失败由回调内吞掉，根目录不存在视为空基线。
+	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil // 目录不存在 → 空基线
 		}
@@ -177,9 +178,9 @@ func atomicWrite(path string, data []byte) error {
 		return err
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
+	defer func() { _ = os.Remove(tmpName) }()
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {

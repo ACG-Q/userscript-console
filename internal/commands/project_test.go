@@ -54,7 +54,9 @@ func TestRunProjectTombstone(t *testing.T) {
 			reg.Scripts[i].Issue = &registry.IssueRef{Number: 9, NodeID: "I_del", URL: "https://gh.io/9"}
 		}
 	}
-	saveReg(env, reg)
+	if _, err := saveReg(env, reg); err != nil {
+		t.Fatalf("saveReg: %v", err)
+	}
 
 	res, err := Execute("project", env, "", nil)
 	if err != nil {
@@ -88,7 +90,9 @@ func TestRunProjectCreateIssue(t *testing.T) {
 			reg.Scripts[i].Issue = nil
 		}
 	}
-	saveReg(env, reg)
+	if _, err := saveReg(env, reg); err != nil {
+		t.Fatalf("saveReg: %v", err)
+	}
 
 	res, err := Execute("project", env, "", nil)
 	if err != nil {
@@ -107,8 +111,10 @@ func TestSaveArchive(t *testing.T) {
 	arch := &cleanup.Archive{
 		Schema: 1,
 		Commands: []cleanup.CommandKey{
-			{Command: "add", Author: "u1", CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-				Results: []cleanup.Result{{ID: "r1", Author: "u1", Body: "/add url", CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}}},
+			{
+				Command: "add", Author: "u1", CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+				Results: []cleanup.Result{{ID: "r1", Author: "u1", Body: "/add url", CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}},
+			},
 		},
 	}
 	if err := cleanup.Save(path, arch); err != nil {
@@ -195,10 +201,10 @@ func TestDistURL(t *testing.T) {
 func TestListDistWithFiles(t *testing.T) {
 	root := t.TempDir()
 	distDir := filepath.Join(root, "dist")
-	os.MkdirAll(distDir, 0o755)
-	os.WriteFile(filepath.Join(distDir, "self01.user.js"), []byte("// test"), 0o644)
-	os.WriteFile(filepath.Join(distDir, "self02.user.js"), []byte("// test2"), 0o644)
-	os.MkdirAll(filepath.Join(distDir, "subdir"), 0o755)
+	_ = os.MkdirAll(distDir, 0o755)
+	_ = os.WriteFile(filepath.Join(distDir, "self01.user.js"), []byte("// test"), 0o644)
+	_ = os.WriteFile(filepath.Join(distDir, "self02.user.js"), []byte("// test2"), 0o644)
+	_ = os.MkdirAll(filepath.Join(distDir, "subdir"), 0o755)
 
 	files, err := listDist(root)
 	if err != nil {
@@ -318,5 +324,7 @@ func (f *fakeListIssuesDoer) Do(req *http.Request) (*http.Response, error) {
 }
 
 // 引用 github 包避免 import 报错。
-var _ = github.Issue{}
-var _ = fmt.Errorf // 防止 unused import
+var (
+	_ = github.Issue{}
+	_ = fmt.Errorf // 防止 unused import
+)

@@ -12,8 +12,8 @@ func TestCheck(t *testing.T) {
 	dir := t.TempDir()
 	write := func(rel, content string) {
 		p := filepath.Join(dir, filepath.FromSlash(rel))
-		os.MkdirAll(filepath.Dir(p), 0o755)
-		os.WriteFile(p, []byte(content), 0o644)
+		_ = os.MkdirAll(filepath.Dir(p), 0o755)
+		_ = os.WriteFile(p, []byte(content), 0o644)
 	}
 	write("a.txt", "hello\n")
 	write("b/c.txt", "世界\r\n") // CRLF 归一后应一致
@@ -70,7 +70,7 @@ func TestCheckClean(t *testing.T) {
 
 func TestUpdateRemovesOrphans(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "old.txt"), []byte("x"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "old.txt"), []byte("x"), 0o644)
 	changed, err := Update(dir, map[string]string{"keep.txt": "k"})
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func TestRunCheckPath(t *testing.T) {
 		t.Errorf("check 一致应 exit 0, got %d", code)
 	}
 	// 修改文件后 check 应不一致
-	os.WriteFile(filepath.Join(dir, "test.txt"), []byte("modified\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "test.txt"), []byte("modified\n"), 0o644)
 	if code := Run(dir, []string{"check"}); code != 1 {
 		t.Errorf("check 不一致应 exit 1, got %d", code)
 	}

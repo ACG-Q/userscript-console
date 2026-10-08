@@ -147,7 +147,7 @@ func TestBytesCanonical(t *testing.T) {
 	idxID := strings.Index(s, `"id"`)
 	idxType := strings.Index(s, `"type"`)
 	idxName := strings.Index(s, `"name"`)
-	if !(idxID < idxType && idxType < idxName) {
+	if idxID >= idxType || idxType >= idxName {
 		t.Errorf("键序不符: id=%d type=%d name=%d", idxID, idxType, idxName)
 	}
 }

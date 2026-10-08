@@ -42,8 +42,8 @@ func TestRunCommandBadIssueNumber(t *testing.T) {
 // TestRunCommandBadComment 不以 / 开头的评论返回 1（解析失败）。
 func TestRunCommandBadComment(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("USM_ROOT", root)
-	defer os.Unsetenv("USM_ROOT")
+	_ = os.Setenv("USM_ROOT", root)
+	defer func() { _ = os.Unsetenv("USM_ROOT") }()
 
 	if code := runCommandRun([]string{
 		"--comment-body=hello", "--comment-user=u", "--issue-number=1",
@@ -55,8 +55,8 @@ func TestRunCommandBadComment(t *testing.T) {
 // TestRunCommandJSONMode --json 输出合法 JSON。
 func TestRunCommandJSONMode(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("USM_ROOT", root)
-	defer os.Unsetenv("USM_ROOT")
+	_ = os.Setenv("USM_ROOT", root)
+	defer func() { _ = os.Unsetenv("USM_ROOT") }()
 
 	if code := runCommandRun([]string{
 		"--comment-body=/list", "--comment-user=u", "--issue-number=1", "--json",
@@ -68,8 +68,8 @@ func TestRunCommandJSONMode(t *testing.T) {
 // TestRunCommandResultFile --result-file 落盘回帖正文。
 func TestRunCommandResultFile(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("USM_ROOT", root)
-	defer os.Unsetenv("USM_ROOT")
+	_ = os.Setenv("USM_ROOT", root)
+	defer func() { _ = os.Unsetenv("USM_ROOT") }()
 
 	out := filepath.Join(t.TempDir(), "result.txt")
 	if code := runCommandRun([]string{
@@ -90,8 +90,8 @@ func TestRunCommandResultFile(t *testing.T) {
 // TestRunCommandResultFileBadPath 结果文件路径不可写时返回 1。
 func TestRunCommandResultFileBadPath(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("USM_ROOT", root)
-	defer os.Unsetenv("USM_ROOT")
+	_ = os.Setenv("USM_ROOT", root)
+	defer func() { _ = os.Unsetenv("USM_ROOT") }()
 
 	bad := filepath.Join(root, "registry.json", "nested", "result.txt")
 	if code := runCommandRun([]string{
@@ -105,8 +105,8 @@ func TestRunCommandResultFileBadPath(t *testing.T) {
 // TestRunCommandUnknownCommand 未注册命令返回 1。
 func TestRunCommandUnknownCommand(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("USM_ROOT", root)
-	defer os.Unsetenv("USM_ROOT")
+	_ = os.Setenv("USM_ROOT", root)
+	defer func() { _ = os.Unsetenv("USM_ROOT") }()
 
 	if code := runCommandRun([]string{
 		"--comment-body=/nosuchcmd", "--comment-user=u", "--issue-number=1",
@@ -118,16 +118,16 @@ func TestRunCommandUnknownCommand(t *testing.T) {
 // TestRunEnvFallback 未显式传 repo-owner 时从 GH_REPO_OWNER 兜底。
 func TestRunEnvFallback(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("USM_ROOT", root)
-	defer os.Unsetenv("USM_ROOT")
-	os.Setenv("GH_REPO_OWNER", "env-owner")
-	defer os.Unsetenv("GH_REPO_OWNER")
-	os.Setenv("PAGES_BASE", "https://env.github.io/repo")
-	defer os.Unsetenv("PAGES_BASE")
-	os.Setenv("AUTHOR_NAME", "EnvAuthor")
-	defer os.Unsetenv("AUTHOR_NAME")
-	os.Setenv("AUTHOR_NAMESPACE", "env.ns")
-	defer os.Unsetenv("AUTHOR_NAMESPACE")
+	_ = os.Setenv("USM_ROOT", root)
+	defer func() { _ = os.Unsetenv("USM_ROOT") }()
+	_ = os.Setenv("GH_REPO_OWNER", "env-owner")
+	defer func() { _ = os.Unsetenv("GH_REPO_OWNER") }()
+	_ = os.Setenv("PAGES_BASE", "https://env.github.io/repo")
+	defer func() { _ = os.Unsetenv("PAGES_BASE") }()
+	_ = os.Setenv("AUTHOR_NAME", "EnvAuthor")
+	defer func() { _ = os.Unsetenv("AUTHOR_NAME") }()
+	_ = os.Setenv("AUTHOR_NAMESPACE", "env.ns")
+	defer func() { _ = os.Unsetenv("AUTHOR_NAMESPACE") }()
 
 	if code := runCommandRun([]string{
 		"--comment-body=/list", "--comment-user=u", "--issue-number=1",
@@ -151,8 +151,8 @@ func TestDoctorRunFlagErrors(t *testing.T) {
 
 // TestParseRootFlagVariants --root= 与 --root 两种写法都应解析。
 func TestParseRootFlagVariants(t *testing.T) {
-	os.Setenv("USM_ROOT", "/env/root")
-	defer os.Unsetenv("USM_ROOT")
+	_ = os.Setenv("USM_ROOT", "/env/root")
+	defer func() { _ = os.Unsetenv("USM_ROOT") }()
 
 	if got := parseRootFlag([]string{"--root=/flag/root"}); got != "/flag/root" {
 		t.Errorf("--root= 形式解析错误: %s", got)
@@ -241,8 +241,8 @@ func TestParseCommandCommentNoArgs(t *testing.T) {
 // TestProjectRunSuccess project 在健康仓库应返回 0。
 func TestProjectRunSuccess(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("GH_REPO_OWNER", "test-owner")
-	defer os.Unsetenv("GH_REPO_OWNER")
+	_ = os.Setenv("GH_REPO_OWNER", "test-owner")
+	defer func() { _ = os.Unsetenv("GH_REPO_OWNER") }()
 	if code := projectRun([]string{"--root", root}); code != 0 {
 		t.Errorf("project 应返回 0, got %d", code)
 	}
@@ -251,8 +251,8 @@ func TestProjectRunSuccess(t *testing.T) {
 // TestBuildRunSuccess build 带 PAGES_BASE 应返回 0。
 func TestBuildRunSuccess(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("PAGES_BASE", "https://test.github.io/repo")
-	defer os.Unsetenv("PAGES_BASE")
+	_ = os.Setenv("PAGES_BASE", "https://test.github.io/repo")
+	defer func() { _ = os.Unsetenv("PAGES_BASE") }()
 	if code := buildRun([]string{"--root", root}); code != 0 {
 		t.Errorf("build 应返回 0, got %d", code)
 	}
@@ -560,14 +560,14 @@ func TestSubcommandErrorPaths(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(badRoot, "registry.json"), []byte("{ broken"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	os.Setenv("GH_REPO_OWNER", "test-owner")
-	defer os.Unsetenv("GH_REPO_OWNER")
+	_ = os.Setenv("GH_REPO_OWNER", "test-owner")
+	defer func() { _ = os.Unsetenv("GH_REPO_OWNER") }()
 
 	if code := projectRun([]string{"--root", badRoot}); code != 1 {
 		t.Errorf("project 遇坏 registry 应返回 1, got %d", code)
 	}
-	os.Setenv("PAGES_BASE", "https://test.github.io/repo")
-	defer os.Unsetenv("PAGES_BASE")
+	_ = os.Setenv("PAGES_BASE", "https://test.github.io/repo")
+	defer func() { _ = os.Unsetenv("PAGES_BASE") }()
 	if code := buildRun([]string{"--root", badRoot}); code != 1 {
 		t.Errorf("build 遇坏 registry 应返回 1, got %d", code)
 	}
@@ -579,8 +579,8 @@ func TestSubcommandErrorPaths(t *testing.T) {
 // TestProjectRunNoOwner 未配置 repo owner 时 project 软失败（退出码 0，回帖带错误文本）。
 func TestProjectRunNoOwner(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Unsetenv("GH_REPO_OWNER")
-	os.Unsetenv("GH_CLIENT")
+	_ = os.Unsetenv("GH_REPO_OWNER")
+	_ = os.Unsetenv("GH_CLIENT")
 	if code := projectRun([]string{"--root", root}); code != 0 {
 		t.Errorf("project 无 repo owner 应软失败返回 0, got %d", code)
 	}
@@ -589,7 +589,7 @@ func TestProjectRunNoOwner(t *testing.T) {
 // TestBuildRunNoPagesBase 缺 PAGES_BASE 时 build 软失败（退出码 0，回帖带错误文本）。
 func TestBuildRunNoPagesBase(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Unsetenv("PAGES_BASE")
+	_ = os.Unsetenv("PAGES_BASE")
 	if code := buildRun([]string{"--root", root}); code != 0 {
 		t.Errorf("build 缺 PAGES_BASE 应软失败返回 0, got %d", code)
 	}

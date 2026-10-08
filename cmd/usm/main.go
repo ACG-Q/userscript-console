@@ -137,7 +137,7 @@ func doctorRun(args []string) int {
 
 	// action.yml 对所有子命令都追加 --json 并用 jq 解析 stdout，
 	// 故 --json 时必须输出 {authorized, changed, result} 结构
-	//（cli.RunDoctor 的 {problems, ok} 结构 jq 取不到 .changed）。
+	// （cli.RunDoctor 的 {problems, ok} 结构 jq 取不到 .changed）。
 	if asJSON {
 		problems, ok := cli.Check(root)
 		result := "✅ doctor 检查通过"
@@ -508,7 +508,7 @@ func boolToString(b bool) string {
 }
 
 func usage(w *os.File) {
-	fmt.Fprint(w, `usm —— 油猴脚本控制台
+	_, _ = fmt.Fprint(w, `usm —— 油猴脚本控制台
 
 用法: usm <command> [flags]
 

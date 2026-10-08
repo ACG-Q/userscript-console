@@ -44,23 +44,25 @@ func TestCleanupWithApplyAndDelete(t *testing.T) {
 		},
 	}
 	data, _ := json.Marshal(reg)
-	os.WriteFile(regPath, data, 0o644)
+	_ = os.WriteFile(regPath, data, 0o644)
 
 	// 写入旧归档（含 2 条过期评论）
 	archiveDir := filepath.Join(root, "archive")
-	os.MkdirAll(archiveDir, 0o755)
+	_ = os.MkdirAll(archiveDir, 0o755)
 	archivePath := filepath.Join(archiveDir, "commands.json")
 	oldArchive := &cleanup.Archive{
 		Schema: 1,
 		Commands: []cleanup.CommandKey{
-			{Command: "add", Author: "u", CreatedAt: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+			{
+				Command: "add", Author: "u", CreatedAt: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
 				Results: []cleanup.Result{
 					{ID: "old1", Author: "u", Body: "/add https://old.com", CreatedAt: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)},
 					{ID: "old2", Author: "u", Body: "/add https://old2.com", CreatedAt: time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)},
-				}},
+				},
+			},
 		},
 	}
-	cleanup.Save(archivePath, oldArchive)
+	_ = cleanup.Save(archivePath, oldArchive)
 
 	// 构造 fake GHClient：使用与 github 包测试完全相同的数据格式
 	d := &cleanupDoer{t: t}
@@ -141,7 +143,7 @@ func TestCleanupDryRunNoGHClient(t *testing.T) {
 		{ID: "s1", Type: registry.TypeSelf, Name: "测试", Version: "1.0.0", Enabled: true, Deleted: false},
 	}}
 	data, _ := json.Marshal(reg)
-	os.WriteFile(regPath, data, 0o644)
+	_ = os.WriteFile(regPath, data, 0o644)
 	env := &Env{Root: root, RepoOwner: "o", IssueNumber: 1}
 	res, err := Execute("cleanup", env, "", nil)
 	if err != nil {
@@ -159,7 +161,7 @@ func TestCleanupSaveFailureSkipsDelete(t *testing.T) {
 		{ID: "s1", Type: registry.TypeSelf, Name: "测试", Version: "1.0.0", Enabled: true},
 	}}
 	data, _ := json.Marshal(reg)
-	os.WriteFile(filepath.Join(root, "registry.json"), data, 0o644)
+	_ = os.WriteFile(filepath.Join(root, "registry.json"), data, 0o644)
 
 	d := &cleanupDoer{t: t}
 	comment := map[string]any{
@@ -202,13 +204,17 @@ func TestCleanupDeleteFailureArchiveAlreadySaved(t *testing.T) {
 		{ID: "s1", Type: registry.TypeSelf, Name: "测试", Version: "1.0.0", Enabled: true},
 	}}
 	data, _ := json.Marshal(reg)
-	os.WriteFile(filepath.Join(root, "registry.json"), data, 0o644)
+	_ = os.WriteFile(filepath.Join(root, "registry.json"), data, 0o644)
 
 	d := &cleanupDoer{t: t}
-	c1 := map[string]any{"id": "c1", "author": map[string]any{"login": "u"},
-		"body": "/add old", "createdAt": "2026-10-01T00:00:00Z"}
-	c2 := map[string]any{"id": "c2", "author": map[string]any{"login": "u"},
-		"body": "/add new", "createdAt": "2026-10-02T00:00:00Z"}
+	c1 := map[string]any{
+		"id": "c1", "author": map[string]any{"login": "u"},
+		"body": "/add old", "createdAt": "2026-10-01T00:00:00Z",
+	}
+	c2 := map[string]any{
+		"id": "c2", "author": map[string]any{"login": "u"},
+		"body": "/add new", "createdAt": "2026-10-02T00:00:00Z",
+	}
 	list, _ := json.Marshal(map[string]any{
 		"data": map[string]any{"repository": map[string]any{"issue": map[string]any{
 			"comments": map[string]any{

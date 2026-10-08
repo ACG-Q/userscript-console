@@ -413,7 +413,7 @@ func TestRenderCommandPagesWithArchive(t *testing.T) {
 	// 创建归档文件 - archive 在 Out 的父目录
 	root := t.TempDir()
 	archiveDir := filepath.Join(filepath.Dir(root), "archive")
-	os.MkdirAll(archiveDir, 0o755)
+	_ = os.MkdirAll(archiveDir, 0o755)
 	archiveData := `{
 		"schema": 1,
 		"commands": [
@@ -474,8 +474,8 @@ func TestRenderCommandsBadArchive(t *testing.T) {
 	root := t.TempDir()
 	// renderCommands 在 Out 的父目录的 archive/ 下找 commands.json
 	archiveDir := filepath.Join(filepath.Dir(filepath.Clean(root)), "archive")
-	os.MkdirAll(archiveDir, 0o755)
-	os.WriteFile(filepath.Join(archiveDir, "commands.json"), []byte("not json"), 0o644)
+	_ = os.MkdirAll(archiveDir, 0o755)
+	_ = os.WriteFile(filepath.Join(archiveDir, "commands.json"), []byte("not json"), 0o644)
 	opts := Options{Out: root, PagesBase: "https://test.github.io/repo"}
 	_, _, err := renderCommands(opts)
 	if err == nil {
@@ -488,9 +488,9 @@ func TestBuildWithCommandsArchive(t *testing.T) {
 	root := t.TempDir()
 	// 同逻辑：archive 在 Out 父目录
 	archiveDir := filepath.Join(filepath.Dir(filepath.Clean(root)), "archive")
-	os.MkdirAll(archiveDir, 0o755)
+	_ = os.MkdirAll(archiveDir, 0o755)
 	archiveJSON := `{"schema":1,"commands":[{"command":"add","author":"u","created_at":"2026-01-01T00:00:00Z","results":[{"id":"r1","author":"u","body":"/add url","created_at":"2026-01-01T00:00:00Z"}]}]}`
-	os.WriteFile(filepath.Join(archiveDir, "commands.json"), []byte(archiveJSON), 0o644)
+	_ = os.WriteFile(filepath.Join(archiveDir, "commands.json"), []byte(archiveJSON), 0o644)
 	opts := Options{
 		Out:             root,
 		Now:             time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC),
@@ -532,12 +532,14 @@ func TestRenderMarkdownErrorPath(t *testing.T) {
 // TestBuildLinksAreRelative 站点内链必须是相对路径，Pages 子路径部署不得 404（CUTOVER §3）。
 func TestBuildLinksAreRelative(t *testing.T) {
 	reg := buildTestRegistry(t)
-	opts := Options{Out: t.TempDir(), PagesBase: "https://test.github.io/repo",
-		Now: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)}
+	opts := Options{
+		Out: t.TempDir(), PagesBase: "https://test.github.io/repo",
+		Now: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC),
+	}
 
 	// 归档：使命令页与首页导航可用（renderCommands 从 Out 同级 archive/ 读取）
 	archiveDir := filepath.Join(filepath.Dir(filepath.Clean(opts.Out)), "archive")
-	os.MkdirAll(archiveDir, 0o755)
+	_ = os.MkdirAll(archiveDir, 0o755)
 	archiveJSON := `{"schema":1,"commands":[{"command":"add","author":"u","created_at":"2026-01-01T00:00:00Z","results":[{"id":"r1","author":"u","body":"/add url","created_at":"2026-01-01T00:00:00Z"}]}]}`
 	if err := os.WriteFile(filepath.Join(archiveDir, "commands.json"), []byte(archiveJSON), 0o644); err != nil {
 		t.Fatal(err)

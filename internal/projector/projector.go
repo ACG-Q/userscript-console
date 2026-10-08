@@ -125,27 +125,27 @@ func TombstoneIssue(ctx context.Context, ghc *github.Client, nodeID string) erro
 // BuildIssueBody 构建 Issue body（Markdown，中文）。
 func BuildIssueBody(s *registry.Script, pagesBase string) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("**脚本**: %s v%s\n\n", s.Name, s.Version))
+	fmt.Fprintf(&b, "**脚本**: %s v%s\n\n", s.Name, s.Version)
 	b.WriteString("| 字段 | 值 |\n|---|---|\n")
-	b.WriteString(fmt.Sprintf("| ID | `%s` |\n", s.ID))
-	b.WriteString(fmt.Sprintf("| 类型 | %s |\n", scriptTypeLabel(s.Type)))
-	b.WriteString(fmt.Sprintf("| 状态 | %s |\n", statusLabel(s.Enabled, s.Deleted)))
+	fmt.Fprintf(&b, "| ID | `%s` |\n", s.ID)
+	fmt.Fprintf(&b, "| 类型 | %s |\n", scriptTypeLabel(s.Type))
+	fmt.Fprintf(&b, "| 状态 | %s |\n", statusLabel(s.Enabled, s.Deleted))
 	if s.Description != "" {
-		b.WriteString(fmt.Sprintf("| 描述 | %s |\n", s.Description))
+		fmt.Fprintf(&b, "| 描述 | %s |\n", s.Description)
 	}
-	b.WriteString(fmt.Sprintf("| 作者 | %s |\n", orDash(s.Author)))
-	b.WriteString(fmt.Sprintf("| @match | `%s` |\n", strings.Join(s.Match, ", ")))
-	b.WriteString(fmt.Sprintf("| @grant | `%s` |\n", strings.Join(s.Grant, ", ")))
+	fmt.Fprintf(&b, "| 作者 | %s |\n", orDash(s.Author))
+	fmt.Fprintf(&b, "| @match | `%s` |\n", strings.Join(s.Match, ", "))
+	fmt.Fprintf(&b, "| @grant | `%s` |\n", strings.Join(s.Grant, ", "))
 	if s.SourceURL != nil {
-		b.WriteString(fmt.Sprintf("| 来源 | [%s](%s) |\n", *s.SourceURL, *s.SourceURL))
+		fmt.Fprintf(&b, "| 来源 | [%s](%s) |\n", *s.SourceURL, *s.SourceURL)
 	}
 	if pagesBase != "" {
 		distURL := pagesBase + "/dist/" + s.ID + ".user.js"
-		b.WriteString(fmt.Sprintf("| 分发 | [%s](%s) |\n", s.ID+".user.js", distURL))
+		fmt.Fprintf(&b, "| 分发 | [%s](%s) |\n", s.ID+".user.js", distURL)
 	}
 	b.WriteString("\n---\n\n**changelog**:\n\n| 版本 | 日期 | 说明 |\n|---|---|---|\n")
 	for _, c := range s.Changelog {
-		b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", c.Version, c.Date, c.Note))
+		fmt.Fprintf(&b, "| %s | %s | %s |\n", c.Version, c.Date, c.Note)
 	}
 	return b.String()
 }

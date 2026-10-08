@@ -132,7 +132,7 @@ func TestEnsureURLs注入与幂等(t *testing.T) {
 				iDL := strings.Index(out, "@downloadURL")
 				iUL := strings.Index(out, "@updateURL")
 				iClose := strings.Index(out, "==/UserScript==")
-				if !(iGrant >= 0 && iGrant < iDL && iDL < iUL && iUL < iClose) {
+				if iGrant < 0 || iGrant >= iDL || iDL >= iUL || iUL >= iClose {
 					t.Errorf("补加行位置错误（应排在既有字段后、闭合行前）:\n%s", out)
 				}
 			},

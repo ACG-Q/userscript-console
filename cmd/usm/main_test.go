@@ -214,8 +214,8 @@ func TestBuildRunWithNoPagesBase(t *testing.T) {
 
 func TestBuildRunWithPagesBaseSuccess(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("PAGES_BASE", "https://test.github.io/repo")
-	defer os.Unsetenv("PAGES_BASE")
+	_ = os.Setenv("PAGES_BASE", "https://test.github.io/repo")
+	defer func() { _ = os.Unsetenv("PAGES_BASE") }()
 	code := buildRun([]string{"--root", root})
 	if code != 0 {
 		t.Errorf("build 带 PagesBase 应返回 0, got %d", code)
@@ -283,7 +283,8 @@ func buildTestRegistryDir(t *testing.T) string {
 	reg := &registry.Registry{
 		Schema: registry.SchemaVersion,
 		Scripts: []registry.Script{
-			{ID: "self01", Type: registry.TypeSelf, Name: "测试", Version: "1.0.0", Enabled: true,
+			{
+				ID: "self01", Type: registry.TypeSelf, Name: "测试", Version: "1.0.0", Enabled: true,
 				Match: []string{"*://*/*"}, Grant: []string{"none"},
 				CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-10-05T00:00:00Z",
 				Changelog: []registry.ChangelogEntry{{Version: "1.0.0", Date: "2026-10-05", Note: "初始"}},
@@ -293,8 +294,8 @@ func buildTestRegistryDir(t *testing.T) string {
 	if err := reg.Save(filepath.Join(root, "registry.json")); err != nil {
 		t.Fatal(err)
 	}
-	os.MkdirAll(filepath.Join(root, "scripts", "self", "self01"), 0o755)
-	os.WriteFile(filepath.Join(root, "scripts", "self", "self01", "index.js"), []byte("// test"), 0o644)
+	_ = os.MkdirAll(filepath.Join(root, "scripts", "self", "self01"), 0o755)
+	_ = os.WriteFile(filepath.Join(root, "scripts", "self", "self01", "index.js"), []byte("// test"), 0o644)
 	return root
 }
 
@@ -322,8 +323,8 @@ func TestBoolToString(t *testing.T) {
 func TestRunCommandWithList(t *testing.T) {
 	root := buildTestRegistryDir(t)
 	// 设置环境变量
-	os.Setenv("USM_ROOT", root)
-	defer os.Unsetenv("USM_ROOT")
+	_ = os.Setenv("USM_ROOT", root)
+	defer func() { _ = os.Unsetenv("USM_ROOT") }()
 
 	code := runCommandRun([]string{
 		"--comment-body=/list",
@@ -337,8 +338,8 @@ func TestRunCommandWithList(t *testing.T) {
 
 func TestRunCommandWithInfo(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("USM_ROOT", root)
-	defer os.Unsetenv("USM_ROOT")
+	_ = os.Setenv("USM_ROOT", root)
+	defer func() { _ = os.Unsetenv("USM_ROOT") }()
 
 	code := runCommandRun([]string{
 		"--comment-body=/info self01",
@@ -381,8 +382,8 @@ func TestDoctorMissingRootValue(t *testing.T) {
 func TestWriteJSON(t *testing.T) {
 	// 测试 writeJSON 函数（通过 runCommandRun 的 JSON 路径间接测试）
 	root := buildTestRegistryDir(t)
-	os.Setenv("USM_ROOT", root)
-	defer os.Unsetenv("USM_ROOT")
+	_ = os.Setenv("USM_ROOT", root)
+	defer func() { _ = os.Unsetenv("USM_ROOT") }()
 
 	// 使用 --json 标志触发 writeJSON 路径
 	code := runCommandRun([]string{
@@ -398,8 +399,8 @@ func TestWriteJSON(t *testing.T) {
 
 func TestResultFile(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("USM_ROOT", root)
-	defer os.Unsetenv("USM_ROOT")
+	_ = os.Setenv("USM_ROOT", root)
+	defer func() { _ = os.Unsetenv("USM_ROOT") }()
 
 	tmpFile := filepath.Join(t.TempDir(), "result.txt")
 	code := runCommandRun([]string{
@@ -432,8 +433,8 @@ func TestRunCommandParseError(t *testing.T) {
 
 func TestRunCommandUnknownCmd(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("USM_ROOT", root)
-	defer os.Unsetenv("USM_ROOT")
+	_ = os.Setenv("USM_ROOT", root)
+	defer func() { _ = os.Unsetenv("USM_ROOT") }()
 
 	// 测试未知命令的路径
 	code := runCommandRun([]string{
@@ -481,8 +482,8 @@ func TestRunCommandEmptyIssueNumber(t *testing.T) {
 
 func TestRunCommandWithRepoOwner(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("USM_ROOT", root)
-	defer os.Unsetenv("USM_ROOT")
+	_ = os.Setenv("USM_ROOT", root)
+	defer func() { _ = os.Unsetenv("USM_ROOT") }()
 
 	code := runCommandRun([]string{
 		"--comment-body=/list",
@@ -497,8 +498,8 @@ func TestRunCommandWithRepoOwner(t *testing.T) {
 
 func TestRunCommandWithPagesBase(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("USM_ROOT", root)
-	defer os.Unsetenv("USM_ROOT")
+	_ = os.Setenv("USM_ROOT", root)
+	defer func() { _ = os.Unsetenv("USM_ROOT") }()
 
 	code := runCommandRun([]string{
 		"--comment-body=/list",
@@ -513,8 +514,8 @@ func TestRunCommandWithPagesBase(t *testing.T) {
 
 func TestRunCommandWithAuthorName(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("USM_ROOT", root)
-	defer os.Unsetenv("USM_ROOT")
+	_ = os.Setenv("USM_ROOT", root)
+	defer func() { _ = os.Unsetenv("USM_ROOT") }()
 
 	code := runCommandRun([]string{
 		"--comment-body=/list",
@@ -529,8 +530,8 @@ func TestRunCommandWithAuthorName(t *testing.T) {
 
 func TestRunCommandWithAuthorNamespace(t *testing.T) {
 	root := buildTestRegistryDir(t)
-	os.Setenv("USM_ROOT", root)
-	defer os.Unsetenv("USM_ROOT")
+	_ = os.Setenv("USM_ROOT", root)
+	defer func() { _ = os.Unsetenv("USM_ROOT") }()
 
 	code := runCommandRun([]string{
 		"--comment-body=/list",
@@ -551,7 +552,7 @@ func TestBuildSnapshotFiles(t *testing.T) {
 	}
 	// 切换到模块根目录（cmd/usm → ../..）以匹配相对路径
 	origWd, _ := os.Getwd()
-	defer os.Chdir(origWd)
+	defer func() { _ = os.Chdir(origWd) }()
 	if err := os.Chdir(filepath.Join("..", "..")); err != nil {
 		t.Skipf("无法切换到模块根目录，跳过: %v", err)
 	}

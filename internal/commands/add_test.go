@@ -35,6 +35,16 @@ type nopCloser struct{}
 func (nopCloser) Read(p []byte) (n int, err error) { return 0, io.EOF }
 func (nopCloser) Close() error                     { return nil }
 
+// fakeDoerOf 断言 Doer 为 *fakeDoer（errcheck 类型断言 ok-guard），不符即失败。
+func fakeDoerOf(t *testing.T, d any) *fakeDoer {
+	t.Helper()
+	fd, ok := d.(*fakeDoer)
+	if !ok {
+		t.Fatalf("Doer 应为 *fakeDoer，实际 %T", d)
+	}
+	return fd
+}
+
 // buildTestEnvWithFake 构造带 fake Doer 的测试 Env。
 func buildTestEnvWithFake(t *testing.T) (*Env, string) {
 	t.Helper()
@@ -102,7 +112,7 @@ func TestAddFromURL(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(sourceCode)),
 		Header:     http.Header{},
 	}
-	env.Doer.(*fakeDoer).resp = resp
+	fakeDoerOf(t, env.Doer).resp = resp
 
 	res, err := Execute("add", env, "https://other.com/script.user.js", nil)
 	if err != nil {
@@ -129,9 +139,9 @@ func TestAddFromURLAlreadyExists(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(sourceCode)),
 		Header:     http.Header{},
 	}
-	env.Doer.(*fakeDoer).resp = resp
+	fakeDoerOf(t, env.Doer).resp = resp
 
-	Execute("add", env, "https://other.com/script.user.js", nil)
+	_, _ = Execute("add", env, "https://other.com/script.user.js", nil)
 
 	res, err := Execute("add", env, "https://other.com/script.user.js", nil)
 	if err != nil {
@@ -145,7 +155,7 @@ func TestAddFromURLAlreadyExists(t *testing.T) {
 // TestAddFromURLNetworkError 测试网络错误。
 func TestAddFromURLNetworkError(t *testing.T) {
 	env, _ := buildTestEnvWithFake(t)
-	env.Doer.(*fakeDoer).err = fmt.Errorf("network error")
+	fakeDoerOf(t, env.Doer).err = fmt.Errorf("network error")
 
 	_, err := Execute("add", env, "https://other.com/script.user.js", nil)
 	if err == nil {
@@ -241,7 +251,7 @@ func TestSyncFull(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(newCode)),
 		Header:     http.Header{},
 	}
-	env.Doer.(*fakeDoer).resp = resp
+	fakeDoerOf(t, env.Doer).resp = resp
 
 	res, err := Execute("sync", env, "sync01", nil)
 	if err != nil {
@@ -268,7 +278,7 @@ func TestSyncNoChange(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(newCode)),
 		Header:     http.Header{},
 	}
-	env.Doer.(*fakeDoer).resp = resp
+	fakeDoerOf(t, env.Doer).resp = resp
 
 	res, err := Execute("sync", env, "sync01", nil)
 	if err != nil {
@@ -288,7 +298,7 @@ func TestSyncAll(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(`// test new`)),
 		Header:     http.Header{},
 	}
-	env.Doer.(*fakeDoer).resp = resp
+	fakeDoerOf(t, env.Doer).resp = resp
 
 	res, err := Execute("sync", env, "all", nil)
 	if err != nil {
@@ -350,7 +360,7 @@ func TestSyncAllNoneToUpdate(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(newCode)),
 		Header:     http.Header{},
 	}
-	env.Doer.(*fakeDoer).resp = resp
+	fakeDoerOf(t, env.Doer).resp = resp
 
 	res, err := Execute("sync", env, "all", nil)
 	if err != nil {
@@ -380,7 +390,9 @@ func TestSyncAllSomeFail(t *testing.T) {
 		Grant:     []string{"none"},
 		SourceURL: stringPtr("https://del.com/s.js"),
 	})
-	saveReg(env, reg)
+	if _, err := saveReg(env, reg); err != nil {
+		t.Fatalf("saveReg: %v", err)
+	}
 
 	newCode := `// ==UserScript==
 // @name        同步脚本
@@ -393,7 +405,7 @@ func TestSyncAllSomeFail(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(newCode)),
 		Header:     http.Header{},
 	}
-	env.Doer.(*fakeDoer).resp = resp
+	fakeDoerOf(t, env.Doer).resp = resp
 
 	res, err := Execute("sync", env, "all", nil)
 	if err != nil {
@@ -416,7 +428,7 @@ func TestSyncAllWritesRegistry(t *testing.T) {
 // @match       *://example.com/*
 // @grant       GM.xmlHttpRequest
 // ==/UserScript==`
-	env.Doer.(*fakeDoer).resp = &http.Response{
+	fakeDoerOf(t, env.Doer).resp = &http.Response{
 		StatusCode: 200,
 		Body:       io.NopCloser(strings.NewReader(newCode)),
 		Header:     http.Header{},
@@ -490,7 +502,7 @@ func TestAddFromURLWithDisabled(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(sourceCode)),
 		Header:     http.Header{},
 	}
-	env.Doer.(*fakeDoer).resp = resp
+	fakeDoerOf(t, env.Doer).resp = resp
 
 	// 先添加停用的脚本
 	res1, err := Execute("add", env, "https://disabled.com/script.user.js", nil)
@@ -577,7 +589,9 @@ func TestAddFromURLDeletedRecover(t *testing.T) {
 		UpdatedAt:   "2026-01-01T00:00:00Z",
 		SyncEnabled: boolPtr(true),
 	})
-	saveReg(env, reg)
+	if _, err := saveReg(env, reg); err != nil {
+		t.Fatalf("saveReg: %v", err)
+	}
 
 	sourceCode := `// ==UserScript==
 // @name        被删脚本
@@ -590,7 +604,7 @@ func TestAddFromURLDeletedRecover(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(sourceCode)),
 		Header:     http.Header{},
 	}
-	env.Doer.(*fakeDoer).resp = resp
+	fakeDoerOf(t, env.Doer).resp = resp
 
 	res, err := Execute("add", env, "https://recover.com/s.js", nil)
 	if err != nil {
@@ -626,7 +640,7 @@ func TestAddSelfScriptWriteError(t *testing.T) {
 	}
 	// 将 scripts 目录设为文件，使后续写入失败
 	scriptsDir := filepath.Join(root, "scripts")
-	os.Remove(scriptsDir)
+	_ = os.Remove(scriptsDir)
 	if err := os.WriteFile(scriptsDir, []byte("not a dir"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -691,7 +705,7 @@ func TestAddFromURLWritesDist(t *testing.T) {
 // @match       *://example.com/*
 // @grant       none
 // ==/UserScript==`
-	env.Doer.(*fakeDoer).resp = &http.Response{
+	fakeDoerOf(t, env.Doer).resp = &http.Response{
 		StatusCode: 200,
 		Body:       io.NopCloser(strings.NewReader(sourceCode)),
 		Header:     http.Header{},
@@ -756,7 +770,7 @@ func TestSyncWritesDist(t *testing.T) {
 // @match       *://example.com/*
 // @grant       GM.xmlHttpRequest
 // ==/UserScript==`
-	env.Doer.(*fakeDoer).resp = &http.Response{
+	fakeDoerOf(t, env.Doer).resp = &http.Response{
 		StatusCode: 200,
 		Body:       io.NopCloser(strings.NewReader(newCode)),
 		Header:     http.Header{},

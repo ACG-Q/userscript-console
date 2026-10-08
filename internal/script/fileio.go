@@ -131,13 +131,13 @@ func writeFile(root, rel, content string) error {
 		return fmt.Errorf("script: 创建临时文件 %s: %w", dir, err)
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName) // rename 成功后该调用无效果
+	defer func() { _ = os.Remove(tmpName) }() // rename 成功后该调用无效果
 	if _, err := tmp.WriteString(content); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("script: 写入 %s: %w", rel, err)
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("script: 刷新 %s: %w", rel, err)
 	}
 	if err := tmp.Close(); err != nil {

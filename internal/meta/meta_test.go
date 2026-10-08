@@ -69,7 +69,7 @@ func TestRenderRoundTrip(t *testing.T) {
 	rv := index(out, "@version")
 	rd := index(out, "@downloadURL")
 	rm := index(out, "@match")
-	if !(ri < rv && rv < rm && rm < rd) {
+	if ri >= rv || rv >= rm || rm >= rd {
 		t.Errorf("渲染顺序错误:\n%s", out)
 	}
 	// 幂等：Render→Parse→Render 稳定

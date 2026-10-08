@@ -36,7 +36,7 @@ func newCancelDuringSleep(t *testing.T, d Doer) (*Client, context.Context, conte
 func TestRawNilContext(t *testing.T) {
 	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{"viewer": map[string]any{"login": "u"}}), nil}}}
 	c := newTestClient(t, d)
-	if err := c.Raw(nil, `query { viewer { login } }`, nil, nil); err != nil {
+	if err := c.Raw(context.TODO(), `query { viewer { login } }`, nil, nil); err != nil {
 		t.Fatalf("nil ctx 应退化为 Background: %v", err)
 	}
 }

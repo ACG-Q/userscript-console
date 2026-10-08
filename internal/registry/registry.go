@@ -208,13 +208,13 @@ func (r *Registry) Save(path string) error {
 		return err
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName) // rename 成功后该调用无效果
+	defer func() { _ = os.Remove(tmpName) }() // rename 成功后该调用无效果
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {

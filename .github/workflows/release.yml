@@ -51,6 +51,10 @@ jobs:
           if [ -n "$out" ]; then echo "gofmt 需要格式化:"; echo "$out"; exit 1; fi
       - name: vet
         run: go vet ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.14.0
       - name: 测试 + 覆盖率门禁
         run: |
           go test ./... -covermode=atomic -coverprofile=cover.out

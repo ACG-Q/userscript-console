@@ -49,7 +49,7 @@ func runList(env *Env, args string, code []string) (Result, error) {
 			s.ID, escape.EscapeMdCell(s.Name), escape.EscapeMdCell(s.Version), s.Type, state)
 	}
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("共 %d 个%s", len(active), deletedHint(deleted)))
+	fmt.Fprintf(&b, "共 %d 个%s", len(active), deletedHint(deleted))
 	return reply(false, "%s", b.String())
 }
 

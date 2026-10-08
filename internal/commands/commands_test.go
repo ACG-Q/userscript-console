@@ -96,7 +96,7 @@ func TestRmBasic(t *testing.T) {
 
 func TestRmAlreadyDeleted(t *testing.T) {
 	env, _ := buildTestEnvWithSource(t)
-	Execute("rm", env, "del01", nil)
+	_, _ = Execute("rm", env, "del01", nil)
 	res, err := Execute("rm", env, "del01", nil)
 	if err != nil {
 		t.Fatalf("rm 不应返回 error: %v", err)
