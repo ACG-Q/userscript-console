@@ -91,9 +91,13 @@
                 if (cards[i]) cards[i].style.display = '';
             }
             shown = next;
-            if (shown >= total) document.getElementById('loadMore').style.display = 'none';
+            if (shown >= total) {
+                var lm = document.getElementById('loadMore');
+                if (lm) lm.style.display = 'none';
+            }
         }
-        document.getElementById('loadMoreBtn').onclick = loadMore;
+        var btn = document.getElementById('loadMoreBtn');
+        if (btn) btn.onclick = loadMore;
         loadMore();
     })();
     </script>

@@ -636,3 +636,16 @@ func TestCommentBodySinglePassAndClipped(t *testing.T) {
 		t.Errorf("截断后应以 400 字 + 省略号结尾")
 	}
 }
+
+// TestIndexJSGuardsMissingLoadMore Total≤Batch 时 loadMore 元素不渲染，JS 不得空引用（I10）。
+func TestIndexJSGuardsMissingLoadMore(t *testing.T) {
+	reg := buildTestRegistry(t)
+	opts := Options{Out: t.TempDir(), PagesBase: "https://test.github.io/repo", Batch: 10}
+	out, err := Build(reg, opts, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.IndexHTML, "if (btn)") || !strings.Contains(out.IndexHTML, "if (lm)") {
+		t.Errorf("index JS 缺少 loadMore 元素的 null 守卫:\n%s", out.IndexHTML)
+	}
+}
