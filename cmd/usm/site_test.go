@@ -316,3 +316,107 @@ func TestBuildRunWritesSite(t *testing.T) {
 		}
 	}
 }
+
+// TestWriteSiteAllowsDocsSubdir dist/docs/commands/<slug>.html 应放行并落盘。
+func TestWriteSiteAllowsDocsSubdir(t *testing.T) {
+	root := t.TempDir()
+	out := pages.Outcome{
+		IndexHTML:   "<html>home</html>",
+		ScriptsJSON: "{}",
+		DocHTMLs: map[string]string{
+			"index.html":        "<html>idx</html>",
+			"commands/add.html": "<html>add</html>",
+		},
+	}
+	changed, err := writeSite(root, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Error("首次写入应 changed=true")
+	}
+	p := filepath.Join(root, "dist", "docs", "commands", "add.html")
+	if b, err := os.ReadFile(p); err != nil || !strings.Contains(string(b), "add") {
+		t.Errorf("应写入 %s, err=%v", p, err)
+	}
+}
+
+// TestWriteSiteRejectsDeepDocsSubdir 二级以上子目录必须拒绝（路径契约）。
+func TestWriteSiteRejectsDeepDocsSubdir(t *testing.T) {
+	root := t.TempDir()
+	out := pages.Outcome{
+		IndexHTML:   "<html>home</html>",
+		ScriptsJSON: "{}",
+		DocHTMLs:    map[string]string{"a/b/c.html": "<html>x</html>"},
+	}
+	if _, err := writeSite(root, out); err == nil {
+		t.Fatal("二级文档子目录应报错")
+	}
+}
+
+// TestWriteSiteRejectsDocSubdirTraversal 含 .. 的键必须拒绝。
+func TestWriteSiteRejectsDocSubdirTraversal(t *testing.T) {
+	root := t.TempDir()
+	out := pages.Outcome{
+		IndexHTML:   "<html>home</html>",
+		ScriptsJSON: "{}",
+		DocHTMLs:    map[string]string{"commands/../evil.html": "<html>x</html>"},
+	}
+	if _, err := writeSite(root, out); err == nil {
+		t.Fatal("含 .. 的文档键应报错")
+	}
+	if _, err := os.Stat(filepath.Join(root, "evil.html")); err == nil {
+		t.Fatal("不应写出 dist 外文件")
+	}
+}
+
+// TestWriteSiteRejectsDocPathForms 反斜杠、绝对路径、空段键必须拒绝。
+func TestWriteSiteRejectsDocPathForms(t *testing.T) {
+	for _, name := range []string{`commands\add.html`, "/tmp/evil.html", "commands//evil.html"} {
+		root := t.TempDir()
+		out := pages.Outcome{
+			IndexHTML:   "<html>home</html>",
+			ScriptsJSON: "{}",
+			DocHTMLs:    map[string]string{name: "<html>x</html>"},
+		}
+		if _, err := writeSite(root, out); err == nil {
+			t.Errorf("%q 应报错", name)
+		}
+	}
+}
+
+// TestWriteSiteRemovesStaleDocsSubdir 陈旧清理要递归进子目录。
+func TestWriteSiteRemovesStaleDocsSubdir(t *testing.T) {
+	root := t.TempDir()
+	full := pages.Outcome{
+		IndexHTML:   "<html>home</html>",
+		ScriptsJSON: "{}",
+		DocHTMLs: map[string]string{
+			"index.html":        "<html>idx</html>",
+			"commands/add.html": "<html>add</html>",
+			"commands/old.html": "<html>old</html>",
+		},
+	}
+	if _, err := writeSite(root, full); err != nil {
+		t.Fatal(err)
+	}
+	pruned := pages.Outcome{
+		IndexHTML:   "<html>home</html>",
+		ScriptsJSON: "{}",
+		DocHTMLs: map[string]string{
+			"index.html":        "<html>idx</html>",
+			"commands/add.html": "<html>add</html>",
+		},
+	}
+	if _, err := writeSite(root, pruned); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(root, "dist", "docs", "commands", "old.html")
+	if _, err := os.Stat(stale); err == nil {
+		t.Error("陈旧的 commands/old.html 应被清理")
+	}
+	kept := filepath.Join(root, "dist", "docs", "commands", "add.html")
+	if _, err := os.Stat(kept); err != nil {
+		t.Errorf("commands/add.html 不应被误删: %v", err)
+	}
+}

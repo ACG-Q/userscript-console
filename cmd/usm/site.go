@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -120,6 +123,25 @@ const (
 	siteCommandsIndex = "dist/commands/index.html"
 )
 
+// validDocName 文档输出键契约：<slug>.html 或恰好一级 <subdir>/<slug>.html
+//（子目录白名单 [a-z0-9-]+）；拒绝 ..、\、绝对路径、更深层级。
+func validDocName(name string) bool {
+	if name == "" || strings.Contains(name, `\`) || strings.Contains(name, "..") || strings.HasPrefix(name, "/") {
+		return false
+	}
+	parts := strings.Split(name, "/")
+	if len(parts) == 1 {
+		return parts[0] == path.Base(parts[0])
+	}
+	if len(parts) != 2 {
+		return false
+	}
+	if ok, _ := regexp.MatchString(`^[a-z0-9-]+$`, parts[0]); !ok {
+		return false
+	}
+	return parts[1] != "" && parts[1] == path.Base(parts[1])
+}
+
 // writeSite 落盘整站产物：内容有差异才写（幂等 → 相同输入第二次构建 changed=false），
 // 并清掉本轮未再生成的陈旧页面（否则删除脚本后详情页仍可访问）。
 func writeSite(root string, out pages.Outcome) (bool, error) {
@@ -169,8 +191,8 @@ func writeSite(root string, out pages.Outcome) (bool, error) {
 		}
 	}
 	for name, html := range out.DocHTMLs {
-		// 文档 slug 进入文件路径，同样挡掉路径穿越。
-		if strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
+		// 文档输出键进入文件路径：只放行顶层或恰好一级白名单子目录。
+		if !validDocName(name) {
 			return false, fmt.Errorf("非法文档文件名 %q", name)
 		}
 		if err := write(filepath.ToSlash(filepath.Join(siteDocsDir, name)), html); err != nil {
@@ -199,24 +221,30 @@ func writeSite(root string, out pages.Outcome) (bool, error) {
 
 // staleSiteFiles 列出 dir 下本轮未生成、且属于站点产物形态的陈旧文件。
 // 只认 .html：dist/ 根另有 .user.js 分发产物，不能误伤。
+// 递归子目录：dist/docs/commands/ 的陈旧页同样要清。
 func staleSiteFiles(root, dir string, keep map[string]struct{}) ([]string, error) {
-	entries, err := os.ReadDir(filepath.Join(root, dir))
-	if err != nil {
+	base := filepath.Join(root, dir)
+	if _, err := os.Stat(base); err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("读取 %s 失败: %w", dir, err)
 	}
 	var stale []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".html") {
-			continue
+	err := filepath.WalkDir(base, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-		path := filepath.Join(root, dir, e.Name())
-		if _, ok := keep[path]; ok {
-			continue
+		if d.IsDir() || !strings.HasSuffix(strings.ToLower(d.Name()), ".html") {
+			return nil
 		}
-		stale = append(stale, path)
+		if _, ok := keep[p]; !ok {
+			stale = append(stale, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("遍历 %s 失败: %w", dir, err)
 	}
 	return stale, nil
 }
