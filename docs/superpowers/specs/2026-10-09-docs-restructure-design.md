@@ -57,9 +57,9 @@
 
 新增网站脚本源三步走：实现 `Adapter`（`Type`/`MatchURL`/`Fetch`）→ `init()` 中 `register` → hostname 白名单（`MatchHostSuffix` 防绕过语义）+ fixture 回放测试 + 注册清单硬编码断言。以 `greasyfork` 适配器为范例。明确禁止在 `Detect` 或既有适配器中加 if/else 特判；direct 适配器不注册的原因说明。
 
-### 4.4 docs/superpowers/（内部档案，不转换）
+### 4.4 docs/superpowers/（内部工作档案，最终清理）
 
-既有 specs/plans 保留为内部工作档案（与 `dev/` 同理天然不转换）；`2026-10-08-pages-ui-redesign-design.md` 归档保留。
+既有 specs/plans 在实现期间保留（执行计划需要引用）；**全部任务完成并验收后，整个 `docs/superpowers/` 目录从工具仓删除**（用户明确要求最终清理，不留归档）。
 
 ## 5. 测试与基线
 
@@ -81,6 +81,7 @@
 3. 工具仓 git 历史中无 `registry.json` 新增（边界守住）。
 4. userscripts 仓 `docs/` 不存在，站点无"文档"导航项，`go test`/Validate/Deploy 全绿。
 5. 全量门禁绿（含覆盖率 ≥ 90%、lint 0 issues、快照一致）。
+6. 工具仓 `docs/superpowers/` 目录已删除（最终清理，不留归档）。
 
 ## 8. 非目标
 
