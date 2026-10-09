@@ -125,12 +125,16 @@ func Build(reg *registry.Registry, opts Options, data Data) (Outcome, error) {
 		return out, err
 	}
 	for _, dp := range docPages {
-		d := docsData{Title: dp.title, TOC: docPages.toc(), Content: template.HTML(RenderMarkdown(dp.content))}
-		h, err := r.renderPage(dp.title, "docs", d, nil, "../index.html")
+		root := "../index.html"
+		if dp.dir != "" {
+			root = "../../index.html"
+		}
+		d := docsData{Title: dp.title, TOC: docPages.tocFrom(dp), Content: template.HTML(RenderMarkdown(dp.content))}
+		h, err := r.renderPage(dp.title, "docs", d, nil, root)
 		if err != nil {
 			return out, err
 		}
-		out.DocHTMLs[dp.slug+".html"] = h
+		out.DocHTMLs[dp.outName()] = h
 		out.Pages++
 	}
 
@@ -879,25 +883,51 @@ func cmdTime(iso string) string {
 // ── 文档页 ───────────────────────────────────────────────────
 
 type docPage struct {
+	dir     string // ""（顶层）或 "commands"（唯一白名单子目录）
 	slug    string
 	title   string
 	content string
 }
 
+// outName 输出文件相对 dist/docs 的键。
+func (p docPage) outName() string {
+	if p.dir == "" {
+		return p.slug + ".html"
+	}
+	return p.dir + "/" + p.slug + ".html"
+}
+
 type docPages []docPage
 
-func (ps docPages) toc() []docTOCEntry {
+// tocFrom 从当前页视角生成目录链接：同目录裸 slug、跨目录带前缀
+//（仅两级："" 与 commands/）。
+func (ps docPages) tocFrom(cur docPage) []docTOCEntry {
 	toc := make([]docTOCEntry, 0, len(ps))
 	for _, p := range ps {
-		toc = append(toc, docTOCEntry{Href: p.slug + ".html", Name: p.title})
+		var href string
+		switch {
+		case p.dir == cur.dir:
+			href = p.slug + ".html"
+		case cur.dir == "":
+			href = p.dir + "/" + p.slug + ".html"
+		default:
+			href = "../" + p.slug + ".html"
+		}
+		toc = append(toc, docTOCEntry{Href: href, Name: p.title})
 	}
 	return toc
 }
 
-// loadDocs 读取 <Out 的父目录>/docs 下的顶层 *.md（与 archive 探测同构）。
-// index.md 缺失 → 整站不产 docs（nav HasDocs=false，防死链）。
-func loadDocs(opts Options) (docPages, error) {
-	docsDir := filepath.Join(filepath.Dir(filepath.Clean(opts.Out)), "docs")
+// docFile 一份待转换的 md：dir 为 ""（顶层）或 "commands"。
+type docFile struct {
+	dir  string
+	name string
+}
+
+// listDocFiles 收集要转换的 md：顶层 *.md + commands/*.md（白名单子目录，
+// dev/、superpowers/ 等其他子目录一律跳过）。顶层在前、组内文件名升序。
+func listDocFiles(docsDir string) ([]docFile, error) {
+	var files []docFile
 	entries, err := os.ReadDir(docsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -905,43 +935,76 @@ func loadDocs(opts Options) (docPages, error) {
 		}
 		return nil, fmt.Errorf("读取 docs 目录失败: %w", err)
 	}
-	var names []string
+	var top, cmds []string
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".md") {
 			continue
 		}
-		names = append(names, e.Name())
+		top = append(top, e.Name())
 	}
-	sort.Strings(names)
-	if len(names) == 0 {
+	sort.Strings(top)
+	for _, n := range top {
+		files = append(files, docFile{dir: "", name: n})
+	}
+	cmdEntries, err := os.ReadDir(filepath.Join(docsDir, "commands"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return files, nil
+		}
+		return nil, fmt.Errorf("读取 docs/commands 目录失败: %w", err)
+	}
+	for _, e := range cmdEntries {
+		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".md") {
+			continue
+		}
+		cmds = append(cmds, e.Name())
+	}
+	sort.Strings(cmds)
+	for _, n := range cmds {
+		files = append(files, docFile{dir: "commands", name: n})
+	}
+	return files, nil
+}
+
+// loadDocs 读取 <Out 的父目录>/docs：顶层 *.md + commands/*.md（见 listDocFiles）。
+// index.md 门禁只看顶层：缺失 → 整站不产 docs（nav HasDocs=false，防死链）。
+func loadDocs(opts Options) (docPages, error) {
+	docsDir := filepath.Join(filepath.Dir(filepath.Clean(opts.Out)), "docs")
+	files, err := listDocFiles(docsDir)
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
 		return nil, nil
 	}
 
-	seen := make(map[string]string, len(names))
+	seen := make(map[string]string, len(files)) // outName → 源文件名
 	var pages docPages
-	for _, n := range names {
-		stem := strings.TrimSuffix(n, filepath.Ext(n))
+	hasTopIndex := false
+	for _, f := range files {
+		stem := strings.TrimSuffix(f.name, filepath.Ext(f.name))
 		slug := kebab(stem)
 		if slug == "" {
 			slug = "doc"
 		}
-		if prev, ok := seen[slug]; ok {
-			return nil, fmt.Errorf("文档 slug 冲突: %s 与 %s 都映射到 %s", prev, n, slug)
+		dp := docPage{dir: f.dir, slug: slug}
+		if prev, ok := seen[dp.outName()]; ok {
+			return nil, fmt.Errorf("文档 slug 冲突: %s 与 %s 都映射到 %s", prev, f.name, dp.outName())
 		}
-		seen[slug] = n
-		b, err := os.ReadFile(filepath.Join(docsDir, n))
+		seen[dp.outName()] = f.name
+		if f.dir == "" && slug == "index" {
+			hasTopIndex = true
+		}
+		b, err := os.ReadFile(filepath.Join(docsDir, f.dir, f.name))
 		if err != nil {
-			return nil, fmt.Errorf("读取文档 %s 失败: %w", n, err)
+			return nil, fmt.Errorf("读取文档 %s 失败: %w", filepath.Join(f.dir, f.name), err)
 		}
-		content := string(b)
-		pages = append(pages, docPage{
-			slug:    slug,
-			title:   docTitle(content, stem),
-			content: content,
-		})
+		dp.content = string(b)
+		dp.title = docTitle(dp.content, stem)
+		pages = append(pages, dp)
 	}
-	if _, ok := seen["index"]; !ok {
-		return nil, nil // 无 index.md → 不产 docs，nav 死链防护
+	if !hasTopIndex {
+		return nil, nil
 	}
 	return pages, nil
 }

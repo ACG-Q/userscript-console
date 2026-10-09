@@ -1102,15 +1102,16 @@ func TestFirst10(t *testing.T) {
 
 // ── 文档页 ───────────────────────────────────────────────────
 
-// writeDocs 在 out 同级的 docs/ 写入文档文件。
+// writeDocs 在 out 同级的 docs/ 写入文档文件；key 可含 "/"（如 "commands/add.md"）。
 func writeDocs(t *testing.T, out string, files map[string]string) string {
 	t.Helper()
 	dir := filepath.Join(filepath.Dir(filepath.Clean(out)), "docs")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1191,5 +1192,66 @@ func TestBuildDocsSlugConflict(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "slug 冲突") {
 		t.Errorf("错误应说明 slug 冲突: %v", err)
+	}
+}
+
+// TestBuildWithDocsCommandsSubdir commands/ 子目录转换：输出键带前缀、
+// root 链接两级、TOC 按层级；dev/ 子目录不转换。
+func TestBuildWithDocsCommandsSubdir(t *testing.T) {
+	reg := buildTestRegistry(t)
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	writeDocs(t, outDir, map[string]string{
+		"index.md":                 "# 文档中心\n\n索引。",
+		"commands/add.md":          "# add 添加\n\n内容。",
+		"dev/extending-sources.md": "# 扩展\n\n不转换。",
+	})
+
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://test.github.io/repo"}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.DocHTMLs) != 2 {
+		t.Fatalf("应产 index + commands/add 共 2 个文档页（dev/ 不转换）, got %d: %v", len(out.DocHTMLs), out.DocHTMLs)
+	}
+	idx, ok := out.DocHTMLs["index.html"]
+	if !ok {
+		t.Fatal("缺 docs/index.html")
+	}
+	if !strings.Contains(idx, `href="commands/add.html"`) {
+		t.Errorf("顶层 TOC 应链到 commands/add.html")
+	}
+	add, ok := out.DocHTMLs["commands/add.html"]
+	if !ok {
+		t.Fatal("缺 docs/commands/add.html")
+	}
+	if !strings.Contains(add, `href="../../index.html"`) {
+		t.Errorf("commands 页 root 链接应为 ../../index.html")
+	}
+	if !strings.Contains(add, `href="../index.html"`) {
+		t.Errorf("commands 页 TOC 链回顶层 index 应为 ../index.html")
+	}
+	if !strings.Contains(add, `href="add.html"`) {
+		t.Errorf("commands 页 TOC 链同级页应为裸 add.html")
+	}
+}
+
+// TestBuildDocsWithCommandsNoTopIndex 有 commands/ 但无顶层 index.md
+// → 整站仍不产 docs（门禁只认顶层 index.md）。
+func TestBuildDocsWithCommandsNoTopIndex(t *testing.T) {
+	reg := buildTestRegistry(t)
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	writeDocs(t, outDir, map[string]string{"commands/add.md": "# add"})
+
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://test.github.io/repo"}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.DocHTMLs) != 0 {
+		t.Errorf("无顶层 index.md 时 commands/ 不应产出文档页, got %v", out.DocHTMLs)
+	}
+	if strings.Contains(out.IndexHTML, "docs/index.html") {
+		t.Errorf("无文档页时 nav 不应出现文档链接")
 	}
 }
