@@ -731,7 +731,7 @@ func (r *renderer) renderDetail(s registry.Script, opts Options, data Data) (str
 				Comments:   make([]discPayloadComment, 0, len(p.Comments)),
 			}
 			for _, c := range p.Comments {
-				dp.Comments = append(dp.Comments, discPayloadComment{Author: c.Author, Time: c.Time, Body: c.Body})
+				dp.Comments = append(dp.Comments, discPayloadComment(c))
 			}
 			payload = append(payload, dp)
 		}
