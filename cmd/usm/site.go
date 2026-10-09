@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"html/template"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,7 +28,7 @@ type siteBuilder struct {
 	root      string
 	pagesBase string
 	now       time.Time
-	gh        siteGH // nil → 跳过 GitHub 抓取（降级渲染，pages 记 W1）
+	gh        siteGH // nil → 跳过 GitHub 抓取（降级渲染，W1 由 pages.Build 统一记）
 }
 
 // Build 实现 commands.SiteBuilder。
@@ -53,21 +52,22 @@ func (b *siteBuilder) Build(reg *registry.Registry) (int, bool, []string, error)
 }
 
 // fetchData 抓取详情页需要的 GitHub 侧数据。
-// gh == nil（无 token / 本地降级）→ 返回空 Data 与 W1 告警。
+// W1 告警由 pages.Build 统一判定（fetchData 只负责回 Data{} 表示降级）：
+//   - gh == nil（无 token / 本地降级）→ pages.Data{}；
+//   - 有版本帖账本但 0 线程抓到 → pages.Data{}（全灭视为降级）。
+//
 // 任何单帖抓取失败都降级为告警（站点仍要出），不中断构建。
 func (b *siteBuilder) fetchData(reg *registry.Registry) (pages.Data, []string) {
-	data := pages.Data{Discussions: map[string]pages.Thread{}}
 	if b.gh == nil {
-		if hasDiscussions(reg) {
-			return data, []string{"W1: 讨论数据未提供（降级渲染）"}
-		}
-		return data, nil
+		return pages.Data{}, nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
+	data := pages.Data{Discussions: map[string]pages.Thread{}}
 	var warnings []string
+	fetched := 0
 	for _, s := range reg.Scripts {
 		for _, d := range s.Discussions {
 			if d.NodeID == "" {
@@ -82,7 +82,7 @@ func (b *siteBuilder) fetchData(reg *registry.Registry) (pages.Data, []string) {
 			for _, c := range th.Comments {
 				comments = append(comments, pages.Comment{
 					Author:    c.Author,
-					Body:      template.HTML(c.Body),
+					Body:      c.Body,
 					CreatedAt: c.CreatedAt,
 				})
 			}
@@ -90,7 +90,11 @@ func (b *siteBuilder) fetchData(reg *registry.Registry) (pages.Data, []string) {
 				Comments:  comments,
 				HasAnswer: th.HasAnswer,
 			}
+			fetched++
 		}
+	}
+	if fetched == 0 && hasDiscussions(reg) {
+		return pages.Data{}, warnings
 	}
 
 	return data, warnings
@@ -111,6 +115,7 @@ const (
 	siteScriptsJSON   = "dist/scripts.json"
 	siteDetailDir     = "dist/scripts"
 	siteCommandsDir   = "dist/commands"
+	siteDocsDir       = "dist/docs"
 	siteWarningsRel   = "dist/build-warnings.txt"
 	siteCommandsIndex = "dist/commands/index.html"
 )
@@ -163,11 +168,20 @@ func writeSite(root string, out pages.Outcome) (bool, error) {
 			return false, err
 		}
 	}
+	for name, html := range out.DocHTMLs {
+		// 文档 slug 进入文件路径，同样挡掉路径穿越。
+		if strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
+			return false, fmt.Errorf("非法文档文件名 %q", name)
+		}
+		if err := write(filepath.ToSlash(filepath.Join(siteDocsDir, name)), html); err != nil {
+			return false, err
+		}
+	}
 	if err := write(siteWarningsRel, strings.Join(out.BuildWarnings, "\n")); err != nil {
 		return false, err
 	}
 
-	for _, dir := range []string{siteDetailDir, siteCommandsDir} {
+	for _, dir := range []string{siteDetailDir, siteCommandsDir, siteDocsDir} {
 		stale, err := staleSiteFiles(root, dir, keep)
 		if err != nil {
 			return changed, err

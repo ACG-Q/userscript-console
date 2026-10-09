@@ -82,17 +82,36 @@ func TestSiteFetchDataWithGH(t *testing.T) {
 	}
 }
 
-// TestSiteFetchDataDegraded gh=nil + 注册表含版本帖 → W1 告警 + 空数据。
+// TestSiteFetchDataDegraded gh=nil + 注册表含版本帖 → 无自身告警 + 空 Data（W1 由 pages.Build 统一判定）。
 func TestSiteFetchDataDegraded(t *testing.T) {
 	b := &siteBuilder{}
 
 	data, warnings := b.fetchData(siteTestRegistry())
 
-	if len(warnings) != 1 || warnings[0] != "W1: 讨论数据未提供（降级渲染）" {
-		t.Errorf("应产生降级告警, got %v", warnings)
+	if len(warnings) != 0 {
+		t.Errorf("fetchData 不应自带降级告警（W1 归 Build）, got %v", warnings)
 	}
-	if len(data.Discussions) != 0 {
-		t.Errorf("降级时数据应为空, got %v", data.Discussions)
+	if data.Discussions != nil {
+		t.Errorf("降级时 Data{} 应为零值, got %v", data.Discussions)
+	}
+}
+
+// TestSiteFetchDataAllFailWithDiscussions 有账本但 0 线程抓到 → 全灭视为降级，返回 Data{}。
+func TestSiteFetchDataAllFailWithDiscussions(t *testing.T) {
+	b := &siteBuilder{gh: &fakeGH{
+		errs: map[string]error{
+			"DSC_OK":  errors.New("boom"),
+			"DSC_ERR": errors.New("boom"),
+		},
+	}}
+
+	data, warnings := b.fetchData(siteTestRegistry())
+
+	if len(warnings) != 2 {
+		t.Errorf("两条失败应各产一条告警, got %v", warnings)
+	}
+	if data.Discussions != nil {
+		t.Errorf("全灭降级应返回 Data{}, got %v", data.Discussions)
 	}
 }
 
@@ -133,6 +152,7 @@ func siteOutcome() pages.Outcome {
 		DetailHTMLs:   map[string]string{"abc": "<html>detail</html>"},
 		CommandPages:  map[int]string{1: "<html>cmd</html>"},
 		CommandsIndex: "<html>cmds</html>",
+		DocHTMLs:      map[string]string{"index.html": "<html>docs</html>", "guide.html": "<html>guide</html>"},
 		BuildWarnings: []string{"W1: 讨论数据未提供（降级渲染）"},
 	}
 }
@@ -144,6 +164,8 @@ func siteRelPaths() []string {
 		"dist/scripts/abc.html",
 		"dist/commands/page-1.html",
 		"dist/commands/index.html",
+		"dist/docs/index.html",
+		"dist/docs/guide.html",
 		"dist/build-warnings.txt",
 	}
 }
@@ -195,6 +217,7 @@ func TestWriteSiteRemovesStale(t *testing.T) {
 	delete(out.DetailHTMLs, "abc")
 	out.CommandPages = map[int]string{}
 	out.CommandsIndex = ""
+	out.DocHTMLs = map[string]string{}
 
 	changed, err := writeSite(root, out)
 	if err != nil {
@@ -203,7 +226,10 @@ func TestWriteSiteRemovesStale(t *testing.T) {
 	if !changed {
 		t.Error("删除产物应 changed=true")
 	}
-	for _, rel := range []string{"dist/scripts/abc.html", "dist/commands/page-1.html", "dist/commands/index.html"} {
+	for _, rel := range []string{
+		"dist/scripts/abc.html", "dist/commands/page-1.html",
+		"dist/commands/index.html", "dist/docs/index.html", "dist/docs/guide.html",
+	} {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err == nil {
 			t.Errorf("陈旧产物 %s 应被删除", rel)
 		}
@@ -244,6 +270,23 @@ func TestWriteSiteRejectsTraversalID(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "evil.html")); err == nil {
 		t.Error("不应写出数据根之外的文件")
+	}
+}
+
+// TestWriteSiteRejectsTraversalDoc 文档 slug 同样进文件路径，必须挡住路径穿越。
+func TestWriteSiteRejectsTraversalDoc(t *testing.T) {
+	root := t.TempDir()
+	out := pages.Outcome{
+		IndexHTML:   "<html></html>",
+		DocHTMLs:    map[string]string{"../evil.html": "<html>x</html>"},
+		DetailHTMLs: map[string]string{},
+	}
+
+	if _, err := writeSite(root, out); err == nil {
+		t.Fatal("含 .. 的文档文件名应被拒绝")
+	}
+	if _, err := os.Stat(filepath.Join(root, "dist", "evil.html")); err == nil {
+		t.Error("不应写出 docs 目录之外的文件")
 	}
 }
 

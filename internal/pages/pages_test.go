@@ -3,7 +3,7 @@ package pages
 import (
 	"encoding/json"
 	"fmt"
-	"html/template"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -142,13 +142,20 @@ func TestScriptsJSONFormat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// scripts.json 可解析且无转义 HTML
-	var cards []scriptCard
+	var cards []struct {
+		Type string `json:"type"`
+		HTML string `json:"html"`
+	}
 	if err := json.Unmarshal([]byte(out.ScriptsJSON), &cards); err != nil {
 		t.Fatalf("scripts.json 解析失败: %v", err)
 	}
 	if len(cards) != 2 { // 仅活跃脚本
 		t.Errorf("cards 长度应为 2, got %d", len(cards))
+	}
+	for _, c := range cards {
+		if !strings.Contains(c.HTML, "script-card") {
+			t.Errorf("html 应含 script-card 结构: %s", c.HTML)
+		}
 	}
 	if strings.Contains(out.ScriptsJSON, "&lt;") {
 		t.Error("scripts.json 不应转义 HTML")
@@ -170,12 +177,18 @@ func TestDetailPageContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 检查详情页包含必要元素
-	for id, html := range out.DetailHTMLs {
-		// 活跃脚本应有下载按钮，墓碑页应有 tombstone 类
-		if !strings.Contains(html, "脚本控制台") && !strings.Contains(html, "下载脚本") && !strings.Contains(html, "tombstone") {
-			t.Errorf("详情页 %s 缺少预期内容", id)
+	active := out.DetailHTMLs["self01"]
+	for _, want := range []string{"detail-card", "安装脚本", "Tester", "更新历史", "id=\"discData\"", "cmt"} {
+		if !strings.Contains(active, want) {
+			t.Errorf("详情页 self01 缺少 %q", want)
 		}
+	}
+	tomb := out.DetailHTMLs["del01"]
+	if !strings.Contains(tomb, "已下架") {
+		t.Errorf("墓碑页应含 已下架 标记:\n%s", tomb)
+	}
+	if strings.Contains(tomb, "安装脚本") {
+		t.Errorf("墓碑页不应有安装按钮")
 	}
 }
 
@@ -192,47 +205,26 @@ func TestBuildWarnings(t *testing.T) {
 	}
 }
 
-func TestTemplatesExist(t *testing.T) {
-	expected := []string{"index.tmpl", "detail.tmpl", "commands.tmpl", "commands-index.tmpl"}
-	names, err := readTemplates()
+// TestTemplatesEmbedded 全部模板（含 assets/page-shell）在 embedFS 中可解析。
+func TestTemplatesEmbedded(t *testing.T) {
+	entries, err := fs.ReadDir(embedFS, "templates")
 	if err != nil {
-		t.Fatalf("readTemplates 失败: %v", err)
+		t.Fatalf("读取 templates 目录失败: %v", err)
 	}
-	for _, want := range expected {
-		found := false
-		for _, n := range names {
-			if n == want {
-				found = true
-				break
-			}
-		}
-		if !found {
+	found := map[string]bool{}
+	for _, e := range entries {
+		found[e.Name()] = true
+	}
+	for _, want := range []string{
+		"assets.tmpl", "index.tmpl", "detail.tmpl",
+		"commands.tmpl", "commands-index.tmpl", "docs.tmpl",
+	} {
+		if !found[want] {
 			t.Errorf("模板 %s 不存在", want)
 		}
 	}
-}
-
-func TestStaticFilesEmbed(t *testing.T) {
-	// 验证静态资源可嵌入
-	entries, err := embedFS.ReadDir("static")
-	if err != nil {
-		t.Fatalf("读取 static 目录失败: %v", err)
-	}
-	if len(entries) == 0 {
-		t.Error("static 目录应为空或包含文件")
-	}
-	cssCount := 0
-	jsCount := 0
-	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), ".css") {
-			cssCount++
-		}
-		if strings.HasSuffix(e.Name(), ".js") {
-			jsCount++
-		}
-	}
-	if cssCount == 0 {
-		t.Error("应有 CSS 文件")
+	if _, err := newRenderer("", false); err != nil {
+		t.Errorf("全集模板解析失败: %v", err)
 	}
 }
 
@@ -359,52 +351,47 @@ func TestRenderTombstone(t *testing.T) {
 		CreatedAt: "2026-01-01T00:00:00Z",
 		UpdatedAt: "2026-01-01T00:00:00Z",
 	}
-	opts := Options{PagesBase: "https://test.github.io/repo", Now: time.Now()}
-	html, err := renderTombstone(s, opts)
+	r, err := newRenderer("test/repo", false)
 	if err != nil {
-		t.Fatalf("renderTombstone 失败: %v", err)
+		t.Fatal(err)
+	}
+	html, err := r.renderDetail(s, Options{PagesBase: "https://test.github.io/repo", Now: time.Now()}, Data{})
+	if err != nil {
+		t.Fatalf("renderDetail 失败: %v", err)
 	}
 	if !strings.Contains(html, "已删脚本") {
-		t.Errorf("html 应含脚本名: %s", html)
+		t.Errorf("html 应含脚本名")
+	}
+	if !strings.Contains(html, "已下架") {
+		t.Errorf("墓碑页应含 已下架 标记")
 	}
 }
 
-func TestReadTemplates(t *testing.T) {
-	names, err := readTemplates()
-	if err != nil {
-		t.Fatalf("readTemplates 失败: %v", err)
+// isolatedOut 返回隔离输出根（<tmp>/dist），archive/docs 落在同一 <tmp> 下，避免用例间互相污染。
+func isolatedOut(t *testing.T) string {
+	t.Helper()
+	out := filepath.Join(t.TempDir(), "dist")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
 	}
-	if len(names) == 0 {
-		t.Error("应有模板文件")
-	}
+	return out
 }
 
-func TestStaticFilesEmbedRecursive(t *testing.T) {
-	// 验证 static 子目录也可嵌入
-	found := false
-	entries, err := embedFS.ReadDir("static/filter")
-	if err == nil && len(entries) > 0 {
-		found = true
+// writeCommandsArchive 在 opts.Out 的父目录写 archive/commands.json（renderCommands 探测路径约定）。
+func writeCommandsArchive(t *testing.T, out, archiveJSON string) {
+	t.Helper()
+	archiveDir := filepath.Join(filepath.Dir(filepath.Clean(out)), "archive")
+	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
+		t.Fatal(err)
 	}
-	entries, err = embedFS.ReadDir("static/list")
-	if err == nil && len(entries) > 0 {
-		found = true
-	}
-	entries, err = embedFS.ReadDir("static/disc")
-	if err == nil && len(entries) > 0 {
-		found = true
-	}
-	if !found {
-		t.Log("static 子目录可能不存在，跳过")
+	if err := os.WriteFile(filepath.Join(archiveDir, "commands.json"), []byte(archiveJSON), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
 func TestRenderCommandPagesWithArchive(t *testing.T) {
-	// 创建归档文件 - archive 在 Out 的父目录
-	root := t.TempDir()
-	archiveDir := filepath.Join(filepath.Dir(root), "archive")
-	_ = os.MkdirAll(archiveDir, 0o755)
-	archiveData := `{
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{
 		"schema": 1,
 		"commands": [
 			{
@@ -416,18 +403,19 @@ func TestRenderCommandPagesWithArchive(t *testing.T) {
 				]
 			}
 		]
-	}`
-	if err := os.WriteFile(filepath.Join(archiveDir, "commands.json"), []byte(archiveData), 0o644); err != nil {
+	}`)
+
+	r, err := newRenderer("test/repo", false)
+	if err != nil {
 		t.Fatal(err)
 	}
-
 	opts := Options{
-		Out:             root,
+		Out:             outDir,
 		Now:             time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC),
 		PagesBase:       "https://test.github.io/repo",
 		CommandsPerPage: 5,
 	}
-	cp, idx, err := renderCommands(opts)
+	cp, idx, err := r.renderCommands(opts)
 	if err != nil {
 		t.Fatalf("renderCommands 失败: %v", err)
 	}
@@ -461,28 +449,24 @@ func TestRenderMarkdownEdgeCases(t *testing.T) {
 }
 
 func TestRenderCommandsBadArchive(t *testing.T) {
-	root := t.TempDir()
-	// renderCommands 在 Out 的父目录的 archive/ 下找 commands.json
-	archiveDir := filepath.Join(filepath.Dir(filepath.Clean(root)), "archive")
-	_ = os.MkdirAll(archiveDir, 0o755)
-	_ = os.WriteFile(filepath.Join(archiveDir, "commands.json"), []byte("not json"), 0o644)
-	opts := Options{Out: root, PagesBase: "https://test.github.io/repo"}
-	_, _, err := renderCommands(opts)
-	if err == nil {
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, "not json")
+	r, err := newRenderer("test/repo", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := Options{Out: outDir, PagesBase: "https://test.github.io/repo"}
+	if _, _, err := r.renderCommands(opts); err == nil {
 		t.Fatal("renderCommands 坏 JSON 应返回 error")
 	}
 }
 
 func TestBuildWithCommandsArchive(t *testing.T) {
 	reg := buildTestRegistry(t)
-	root := t.TempDir()
-	// 同逻辑：archive 在 Out 父目录
-	archiveDir := filepath.Join(filepath.Dir(filepath.Clean(root)), "archive")
-	_ = os.MkdirAll(archiveDir, 0o755)
-	archiveJSON := `{"schema":1,"commands":[{"command":"add","author":"u","created_at":"2026-01-01T00:00:00Z","results":[{"id":"r1","author":"u","body":"/add url","created_at":"2026-01-01T00:00:00Z"}]}]}`
-	_ = os.WriteFile(filepath.Join(archiveDir, "commands.json"), []byte(archiveJSON), 0o644)
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[{"command":"add","author":"u","created_at":"2026-01-01T00:00:00Z","results":[{"id":"r1","author":"u","body":"/add url","created_at":"2026-01-01T00:00:00Z"}]}]}`)
 	opts := Options{
-		Out:             root,
+		Out:             outDir,
 		Now:             time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC),
 		PagesBase:       "https://test.github.io/repo",
 		CommandsPerPage: 3,
@@ -503,10 +487,14 @@ func TestFilterActiveEmpty(t *testing.T) {
 	}
 }
 
-func TestRenderTemplateNotExist(t *testing.T) {
-	_, err := renderTemplate("nonexistent_template_xyz", nil)
-	if err == nil {
-		t.Fatal("renderTemplate 不存在的模板应返回 error")
+// TestRenderPageBodyNotFound 不存在的 body define 应返回 error。
+func TestRenderPageBodyNotFound(t *testing.T) {
+	r, err := newRenderer("", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.renderPage("x", "nonexistent_template_xyz", nil, nil, "index.html"); err == nil {
+		t.Fatal("渲染不存在的模板应返回 error")
 	}
 }
 
@@ -522,20 +510,13 @@ func TestRenderMarkdownErrorPath(t *testing.T) {
 // TestBuildLinksAreRelative 站点内链必须是相对路径，Pages 子路径部署不得 404（CUTOVER §3）。
 func TestBuildLinksAreRelative(t *testing.T) {
 	reg := buildTestRegistry(t)
-	opts := Options{
-		Out: t.TempDir(), PagesBase: "https://test.github.io/repo",
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[{"command":"add","author":"u","created_at":"2026-10-01T00:00:00Z","results":[{"id":"r1","author":"u","body":"/add url","created_at":"2026-10-01T00:00:00Z"}]}]}`)
+
+	out, err := Build(reg, Options{
+		Out: outDir, PagesBase: "https://test.github.io/repo",
 		Now: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC),
-	}
-
-	// 归档：使命令页与首页导航可用（renderCommands 从 Out 同级 archive/ 读取）
-	archiveDir := filepath.Join(filepath.Dir(filepath.Clean(opts.Out)), "archive")
-	_ = os.MkdirAll(archiveDir, 0o755)
-	archiveJSON := `{"schema":1,"commands":[{"command":"add","author":"u","created_at":"2026-01-01T00:00:00Z","results":[{"id":"r1","author":"u","body":"/add url","created_at":"2026-01-01T00:00:00Z"}]}]}`
-	if err := os.WriteFile(filepath.Join(archiveDir, "commands.json"), []byte(archiveJSON), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	out, err := Build(reg, opts, Data{Discussions: map[string]Thread{}})
+	}, Data{Discussions: map[string]Thread{}})
 	if err != nil {
 		t.Fatalf("Build 失败: %v", err)
 	}
@@ -543,8 +524,8 @@ func TestBuildLinksAreRelative(t *testing.T) {
 	cases := []struct{ name, html, want, forbid string }{
 		{"首页脚本卡", out.IndexHTML, `href="scripts/`, `href="/scripts/`},
 		{"首页命令归档导航", out.IndexHTML, `href="commands/page-1.html"`, `href="/commands`},
-		{"详情页返回首页", out.DetailHTMLs["self01"], `href="../"`, `href="/"`},
-		{"命令页返回列表", out.CommandPages[1], `href="../index.html"`, `{{.Base}}`},
+		{"详情页返回首页", out.DetailHTMLs["self01"], `href="../index.html"`, `href="/index.html"`},
+		{"命令页返回列表", out.CommandPages[1], `href="../index.html"`, `href="/index.html"`},
 		{"命令索引分页链接", out.CommandsIndex, `href="page-1.html"`, `/commands/?cmd=`},
 	}
 	for _, c := range cases {
@@ -590,8 +571,8 @@ func TestRenderMarkdownKeepsSafeHTML(t *testing.T) {
 	}
 }
 
-// TestCommentBodySinglePassAndClipped 评论正文单次处理：渲染后 HTML 不得二次转义，且截断至 400 字（I9）。
-func TestCommentBodySinglePassAndClipped(t *testing.T) {
+// TestCommentBodyPlainTextAndClipped 评论正文是纯文本（渲染处转义一次）且截断至 400 字（I9）。
+func TestCommentBodyPlainTextAndClipped(t *testing.T) {
 	reg := buildTestRegistry(t)
 	opts := Options{Out: t.TempDir(), PagesBase: "https://test.github.io/repo"}
 	data := Data{
@@ -603,32 +584,26 @@ func TestCommentBodySinglePassAndClipped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	joined := ""
-	for _, html := range out.DetailHTMLs {
-		joined += html
+	joined := out.DetailHTMLs["self01"]
+	if !strings.Contains(joined, "x &lt;b&gt;y&lt;/b&gt;") {
+		t.Errorf("评论纯文本应被转义一次: 缺 x &lt;b&gt;y&lt;/b&gt;")
 	}
-	if !strings.Contains(joined, "<b>y</b>") {
-		t.Errorf("评论 HTML 未渲染: 缺 <b>y</b>")
-	}
-	if strings.Contains(joined, "&lt;b&gt;") {
-		t.Errorf("评论正文被二次转义: 含 &lt;b&gt;")
+	if strings.Contains(joined, "<b>y</b>") {
+		t.Errorf("评论正文不应渲染为 HTML")
 	}
 
 	// 超 400 字正文须截断并以省略号结尾
 	long := strings.Repeat("a", 500)
 	data = Data{
 		Discussions: map[string]Thread{
-			"D_test1": {Comments: []Comment{{Author: "User1", Body: template.HTML(long), CreatedAt: "2026-10-05"}}},
+			"D_test1": {Comments: []Comment{{Author: "User1", Body: long, CreatedAt: "2026-10-05"}}},
 		},
 	}
 	out, err = Build(reg, opts, data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	joined = ""
-	for _, html := range out.DetailHTMLs {
-		joined += html
-	}
+	joined = out.DetailHTMLs["self01"]
 	if strings.Contains(joined, strings.Repeat("a", 401)) {
 		t.Errorf("评论正文未截断到 400 字")
 	}
@@ -637,35 +612,86 @@ func TestCommentBodySinglePassAndClipped(t *testing.T) {
 	}
 }
 
-// TestIndexJSGuardsMissingLoadMore Total≤Batch 时 loadMore 元素不渲染，JS 不得空引用（I10）。
+// TestIndexJSGuardsMissingLoadMore Total≤Batch 时 list-js 根本不注入，
+// loadMore 元素也不渲染（I10）；注入时 JS 必须有 null 守卫。
 func TestIndexJSGuardsMissingLoadMore(t *testing.T) {
-	reg := buildTestRegistry(t)
+	reg := buildTestRegistry(t) // 2 活跃 ≤ 默认 batch 10
 	opts := Options{Out: t.TempDir(), PagesBase: "https://test.github.io/repo", Batch: 10}
 	out, err := Build(reg, opts, Data{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.IndexHTML, "if (btn)") || !strings.Contains(out.IndexHTML, "if (lm)") {
-		t.Errorf("index JS 缺少 loadMore 元素的 null 守卫:\n%s", out.IndexHTML)
+	if strings.Contains(out.IndexHTML, "id=\"loadMore\"") {
+		t.Errorf("Total≤Batch 不应渲染 loadMore")
+	}
+	if strings.Contains(out.IndexHTML, "getElementById('scriptList')") {
+		t.Errorf("Total≤Batch 不应注入 list-js")
+	}
+
+	// Total>Batch：list-js 注入且带守卫
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	out2, err := Build(manyScriptsRegistry(12), Options{Out: outDir, PagesBase: "https://test.github.io/repo", Batch: 5}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out2.IndexHTML, "id=\"loadMore\"") || !strings.Contains(out2.IndexHTML, "id=\"listSentinel\"") {
+		t.Errorf("Total>Batch 应渲染 loadMore 与 sentinel")
+	}
+	if !strings.Contains(out2.IndexHTML, "if (!list) return;") ||
+		!strings.Contains(out2.IndexHTML, "if (more) more.addEventListener") {
+		t.Errorf("list-js 缺少 null 守卫:\n%s", out2.IndexHTML)
 	}
 }
 
-// writeCommandsArchive 在 opts.Out 的父目录写 archive/commands.json（renderCommands 探测路径约定）。
-func writeCommandsArchive(t *testing.T, out, archiveJSON string) {
-	t.Helper()
-	archiveDir := filepath.Join(filepath.Dir(filepath.Clean(out)), "archive")
-	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
+// manyScriptsRegistry n 个活跃脚本。
+func manyScriptsRegistry(n int) *registry.Registry {
+	reg := &registry.Registry{Schema: registry.SchemaVersion}
+	for i := 0; i < n; i++ {
+		reg.Scripts = append(reg.Scripts, registry.Script{
+			ID:        fmt.Sprintf("s%02d", i),
+			Type:      registry.TypeSelf,
+			Name:      fmt.Sprintf("脚本%02d", i),
+			Version:   "1.0.0",
+			Enabled:   true,
+			Match:     []string{"*://*/*"},
+			Grant:     []string{"none"},
+			CreatedAt: "2026-01-01T00:00:00Z",
+			UpdatedAt: fmt.Sprintf("2026-10-%02dT00:00:00Z", i+1),
+		})
+	}
+	return reg
+}
+
+// TestIndexBatchInitialHide 服务端只渲染前 batch 张卡（贴 projec-02 shown），
+// 余量由 list-js 从 scripts.json 续载（I7④）。
+func TestIndexBatchInitialHide(t *testing.T) {
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	out, err := Build(manyScriptsRegistry(12), Options{Out: outDir, PagesBase: "https://t.example/x", Batch: 5}, Data{})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(archiveDir, "commands.json"), []byte(archiveJSON), 0o644); err != nil {
+	if got := strings.Count(out.IndexHTML, `class="script-card"`); got != 5 {
+		t.Errorf("index 应只渲染前 5 张卡, got %d", got)
+	}
+	if !strings.Contains(out.IndexHTML, `data-batch="5"`) || !strings.Contains(out.IndexHTML, `data-total="12"`) {
+		t.Errorf("scriptList 应携带 data-batch/data-total")
+	}
+	// scripts.json 全量
+	var items []map[string]any
+	if err := json.Unmarshal([]byte(out.ScriptsJSON), &items); err != nil {
 		t.Fatal(err)
+	}
+	if len(items) != 12 {
+		t.Errorf("scripts.json 应含全量 12 条, got %d", len(items))
 	}
 }
 
 // TestCommandsGlobalPagination 全局倒序整组分页：12 组 / 每页 5 → 3 页（对齐 build_pages.py，I7①）。
 func TestCommandsGlobalPagination(t *testing.T) {
 	reg := buildTestRegistry(t)
-	outDir := t.TempDir()
+	outDir := isolatedOut(t)
 	var groups []string
 	for i := 1; i <= 12; i++ {
 		created := fmt.Sprintf("2026-01-%02dT00:00:00Z", i)
@@ -675,7 +701,7 @@ func TestCommandsGlobalPagination(t *testing.T) {
 	}
 	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[`+strings.Join(groups, ",")+`]}`)
 
-	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://t.example/x", CommandsPerPage: 5}, Data{})
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://test.github.io/repo", CommandsPerPage: 5}, Data{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -696,17 +722,21 @@ func TestCommandsGlobalPagination(t *testing.T) {
 	if !strings.Contains(out.CommandPages[3], "mark-01") {
 		t.Errorf("page3 应含最旧组（cmd01）")
 	}
-	if !strings.Contains(out.CommandPages[1], "第 1/3 页") {
-		t.Errorf("page1 stat 应显示 第 1/3 页:\n%s", out.CommandPages[1])
+	if !strings.Contains(out.CommandPages[1], "第 1 / 3 页") {
+		t.Errorf("page1 应显示 第 1 / 3 页:\n%s", out.CommandPages[1])
+	}
+	// 序号每页从 1 起
+	if !strings.Contains(out.CommandPages[2], "#1") {
+		t.Errorf("page2 序号应从 #1 重新开始")
 	}
 }
 
 // TestCommandsIndexMetaRefresh commands/index.html 必须是 meta-refresh 跳转页（I7②）。
 func TestCommandsIndexMetaRefresh(t *testing.T) {
 	reg := buildTestRegistry(t)
-	outDir := t.TempDir()
+	outDir := isolatedOut(t)
 	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[{"command":"add","author":"u","created_at":"2026-01-01T00:00:00Z","results":[{"id":"r1","author":"u","body":"/add x","created_at":"2026-01-01T00:00:00Z"}]}]}`)
-	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://t.example/x"}, Data{})
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://test.github.io/repo"}, Data{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -719,9 +749,9 @@ func TestCommandsIndexMetaRefresh(t *testing.T) {
 // TestArchiveNavLinks 首页与详情页均须有归档导航（相对路径，I7③）。
 func TestArchiveNavLinks(t *testing.T) {
 	reg := buildTestRegistry(t)
-	outDir := t.TempDir()
-	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[{"command":"add","author":"u","created_at":"2026-01-01T00:00:00Z","results":[{"id":"r1","author":"u","body":"/add x","created_at":"2026-01-01T00:00:00Z"}]}]}`)
-	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://t.example/x"}, Data{})
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[{"command":"add","author":"u","created_at":"2026-01-01T00:00:00Z","results":[{"id":"r1","author":"u","body":"/add x","created_at":"2026-10-01T00:00:00Z"}]}]}`)
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://test.github.io/repo"}, Data{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -733,15 +763,433 @@ func TestArchiveNavLinks(t *testing.T) {
 	}
 }
 
-// TestIndexBatchInitialHide 服务端全量渲染：index JS 初始只显示前 batch 条（I7④）。
-func TestIndexBatchInitialHide(t *testing.T) {
+// ── 新 UI 合同 ───────────────────────────────────────────────
+
+// TestIndexHeroAndFilters 首页 hero 三统计卡与筛选 chips（设计 §2）。
+func TestIndexHeroAndFilters(t *testing.T) {
 	reg := buildTestRegistry(t)
-	out, err := Build(reg, Options{Out: t.TempDir(), PagesBase: "https://t.example/x"}, Data{})
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	data := Data{Discussions: map[string]Thread{
+		"D_test1": {
+			Comments: []Comment{
+				{Author: "a", Body: "1", CreatedAt: "2026-10-05"},
+				{Author: "b", Body: "2", CreatedAt: "2026-10-05"},
+			},
+			HasAnswer: true,
+		},
+	}}
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://test.github.io/repo", Now: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)}, data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.IndexHTML, "for (var i = batch; i < cards.length; i++)") ||
-		!strings.Contains(out.IndexHTML, "cards[i].style.display = 'none'") {
-		t.Errorf("index JS 缺少初始隐藏逻辑:\n%s", out.IndexHTML)
+	for _, want := range []string{
+		"class=\"hero\"", "脚本总数", "讨论回复", "已解决反馈",
+		`data-filter="all"`, `data-filter="self"`, `data-filter="synced"`,
+		`id="scriptList"`, "filter-empty", "没有符合筛选条件的脚本",
+	} {
+		if !strings.Contains(out.IndexHTML, want) {
+			t.Errorf("index 缺少 %q", want)
+		}
+	}
+	if !strings.Contains(out.IndexHTML, "<b>2</b><span>讨论回复</span>") {
+		t.Errorf("讨论回复应为 2（Σ 评论数）")
+	}
+	if !strings.Contains(out.IndexHTML, "<b>1</b><span>已解决反馈</span>") {
+		t.Errorf("已解决反馈应为 1")
+	}
+}
+
+// TestIndexHeroDegraded 降级（Data{}）时统计显示占位符「—」。
+func TestIndexHeroDegraded(t *testing.T) {
+	reg := buildTestRegistry(t)
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://test.github.io/repo"}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.IndexHTML, "<b>—</b><span>讨论回复</span>") ||
+		!strings.Contains(out.IndexHTML, "<b>—</b><span>已解决反馈</span>") {
+		t.Errorf("降级时统计应为占位符 —:\n%s", out.IndexHTML)
+	}
+}
+
+// TestCardDiscThreeStates 卡片讨论面板三态（设计 §2 card-disc）。
+func TestCardDiscThreeStates(t *testing.T) {
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	opts := Options{Out: outDir, PagesBase: "https://test.github.io/repo", Now: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)}
+
+	// Kind 0：无讨论无 Issue
+	reg0 := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{{
+		ID: "bare", Type: registry.TypeSelf, Name: "裸脚本", Version: "1.0.0", Enabled: true,
+		Match: []string{"*://*/*"}, Grant: []string{"none"},
+		CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-10-05T00:00:00Z",
+	}}}
+	out0, err := Build(reg0, opts, Data{Discussions: map[string]Thread{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out0.IndexHTML, "还没有讨论") || !strings.Contains(out0.IndexHTML, "发起讨论 →") {
+		t.Errorf("Kind0 应渲染 还没有讨论 + 发起讨论")
+	}
+	// html/template 会把 href 中的 + 转义为 &#43;
+	if !strings.Contains(out0.IndexHTML, "issues?q=is%3Aissue&#43;label%3Ascript") {
+		t.Errorf("Kind0 链接应指向 Issue 列表")
+	}
+
+	// Kind 1：有 Issue 但抓取全灭
+	reg1 := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{{
+		ID: "iss", Type: registry.TypeSelf, Name: "有Issue", Version: "1.0.0", Enabled: true,
+		Match: []string{"*://*/*"}, Grant: []string{"none"},
+		Issue: &registry.IssueRef{Number: 7, NodeID: "I7", URL: "https://github.com/test/repo/issues/7"},
+		Discussions: []registry.DiscussionEntry{
+			{Version: "1.0.0", Number: 3, NodeID: "D_x", URL: "https://github.com/test/repo/discussions/3", CreatedAt: "2026-10-05"},
+		},
+		CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-10-05T00:00:00Z",
+	}}}
+	out1, err := Build(reg1, opts, Data{Discussions: map[string]Thread{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out1.IndexHTML, "摘要暂不可用") || !strings.Contains(out1.IndexHTML, "在 GitHub 打开 →") {
+		t.Errorf("Kind1 应渲染 摘要暂不可用 + 在 GitHub 打开")
+	}
+	if !strings.Contains(out1.IndexHTML, "https://github.com/test/repo/issues/7") {
+		t.Errorf("Kind1 应链到 Issue")
+	}
+
+	// Kind 2：有数据
+	reg2 := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{{
+		ID: "live", Type: registry.TypeSelf, Name: "有讨论", Version: "1.0.0", Enabled: true,
+		Match: []string{"*://*/*"}, Grant: []string{"none"},
+		Discussions: []registry.DiscussionEntry{
+			{Version: "1.0.0", Number: 9, NodeID: "D_live", URL: "https://github.com/test/repo/discussions/9", CreatedAt: "2026-10-05"},
+		},
+		CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-10-05T00:00:00Z",
+	}}}
+	out2, err := Build(reg2, opts, Data{Discussions: map[string]Thread{
+		"D_live": {
+			Comments:  []Comment{{Author: "alice", Body: "这个脚本太棒了", CreatedAt: "2026-10-05T00:00:00Z"}},
+			HasAnswer: true,
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out2.IndexHTML, "已解决") || !strings.Contains(out2.IndexHTML, "1 条回复") {
+		t.Errorf("Kind2 应渲染 issue-badges")
+	}
+	if !strings.Contains(out2.IndexHTML, "这个脚本太棒了") || !strings.Contains(out2.IndexHTML, "alice") {
+		t.Errorf("Kind2 应渲染最新评论引言")
+	}
+}
+
+// TestDetailDiscJSONPayload #discData 载荷：结构完整 + JSON 转义防 </script> 注入（I11）。
+func TestDetailDiscJSONPayload(t *testing.T) {
+	reg := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{{
+		ID: "p01", Type: registry.TypeSelf, Name: "载荷", Version: "2.0.0", Enabled: true,
+		Match: []string{"*://*/*"}, Grant: []string{"none"},
+		Discussions: []registry.DiscussionEntry{
+			{Version: "1.0.0", Number: 1, NodeID: "D_old", URL: "https://github.com/test/repo/discussions/1", CreatedAt: "2026-10-01"},
+			{Version: "2.0.0", Number: 2, NodeID: "D_new", URL: "https://github.com/test/repo/discussions/2", CreatedAt: "2026-10-05"},
+		},
+		CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-10-05T00:00:00Z",
+	}}}
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://test.github.io/repo", Now: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)}, Data{Discussions: map[string]Thread{
+		"D_old": {Comments: []Comment{{Author: "u", Body: "</script><script>alert(1)</script>", CreatedAt: "2026-10-01T00:00:00Z"}}},
+		"D_new": {Comments: []Comment{{Author: "v", Body: "新版说明", CreatedAt: "2026-10-05T00:00:00Z"}}, HasAnswer: true},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := out.DetailHTMLs["p01"]
+	if !strings.Contains(html, `id="discData"`) {
+		t.Fatalf("详情页应含 discData")
+	}
+	// 载荷是合法 JSON 数组（新→旧）
+	start := strings.Index(html, `id="discData">`) + len(`id="discData">`)
+	end := strings.Index(html[start:], "</script>")
+	var payload []discPayloadPost
+	if err := json.Unmarshal([]byte(html[start:start+end]), &payload); err != nil {
+		t.Fatalf("discData 非法 JSON: %v\n%s", err, html[start:start+end])
+	}
+	if len(payload) != 2 || payload[0].Version != "2.0.0" || payload[1].Version != "1.0.0" {
+		t.Errorf("载荷应新→旧: %+v", payload)
+	}
+	if !payload[0].IsAnswered || payload[0].ReplyCount != 1 {
+		t.Errorf("最新帖应 is_answered=true reply_count=1: %+v", payload[0])
+	}
+	// json.Marshal 已转义 < → 载荷内不得出现原始 </script>
+	if strings.Contains(html[start:start+end], "</script>") {
+		t.Errorf("载荷内不应出现原始 </script>（防注入）")
+	}
+	// 服务端首帖渲染（v2 最新）
+	if !strings.Contains(html, "v2.0.0（最新）") || !strings.Contains(html, "新版说明") {
+		t.Errorf("服务端应默认渲染最新版本帖")
+	}
+}
+
+// TestDetailFallbackPanel 详情页无帖时的回退面板（设计 §2 详情 fallback）。
+func TestDetailFallbackPanel(t *testing.T) {
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	opts := Options{Out: outDir, PagesBase: "https://test.github.io/repo"}
+
+	// 无 Issue 无讨论 → 还没有讨论
+	reg0 := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{{
+		ID: "b0", Type: registry.TypeSelf, Name: "裸", Version: "1.0.0", Enabled: true,
+		Match: []string{"*://*/*"}, Grant: []string{"none"},
+		CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-10-05T00:00:00Z",
+	}}}
+	out0, err := Build(reg0, opts, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out0.DetailHTMLs["b0"], "还没有讨论") {
+		t.Errorf("无链接时应渲染 还没有讨论")
+	}
+
+	// 有 Issue → 摘要暂不可用 + 链接
+	reg1 := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{{
+		ID: "b1", Type: registry.TypeSelf, Name: "有Issue", Version: "1.0.0", Enabled: true,
+		Match: []string{"*://*/*"}, Grant: []string{"none"},
+		Issue:     &registry.IssueRef{Number: 5, NodeID: "I5", URL: "https://github.com/test/repo/issues/5"},
+		CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-10-05T00:00:00Z",
+	}}}
+	out1, err := Build(reg1, opts, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := out1.DetailHTMLs["b1"]
+	if !strings.Contains(html, "摘要暂不可用") || !strings.Contains(html, "https://github.com/test/repo/issues/5") {
+		t.Errorf("有链接时应渲染 摘要暂不可用: %s", html)
+	}
+}
+
+// TestEmptyStates 空 registry 首页空态文案（设计 §2）。
+func TestEmptyStates(t *testing.T) {
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	out, err := Build(&registry.Registry{Schema: registry.SchemaVersion}, Options{Out: outDir, PagesBase: "https://test.github.io/repo"}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.IndexHTML, "暂无脚本，请在命令面板 Issue #1 中使用 /add 添加。") {
+		t.Errorf("首页空态文案缺失")
+	}
+	if strings.Contains(out.IndexHTML, `id="filter-empty"`) {
+		t.Errorf("无卡片时不应渲染 filter-empty")
+	}
+}
+
+// TestShellRepoDerived Repo 从 PagesBase 推导；GitHub/管理入口随之显隐。
+func TestShellRepoDerived(t *testing.T) {
+	reg := buildTestRegistry(t)
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://test.github.io/repo"}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.IndexHTML, "https://github.com/test/repo") {
+		t.Errorf("应渲染 GitHub 仓库链接")
+	}
+	if !strings.Contains(out.IndexHTML, "管理入口 · Issue #1") {
+		t.Errorf("应渲染管理入口 Issue #1")
+	}
+
+	out2, err := Build(reg, Options{Out: t.TempDir()}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out2.IndexHTML, "GitHub 仓库") {
+		t.Errorf("无 PagesBase 不应渲染 GitHub 链接")
+	}
+	if strings.Contains(out2.IndexHTML, "管理入口") {
+		t.Errorf("无 PagesBase 不应渲染管理入口")
+	}
+}
+
+// ── 纯函数单测 ───────────────────────────────────────────────
+
+func TestKebab(t *testing.T) {
+	cases := map[string]string{
+		"SPEC-DATA-MODEL": "spec-data-model",
+		"index":           "index",
+		"中文文档":            "中文文档",
+		"a  b":            "a-b",
+		"--x--":           "x",
+		"":                "",
+	}
+	for in, want := range cases {
+		if got := kebab(in); got != want {
+			t.Errorf("kebab(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestDocTitle(t *testing.T) {
+	if got := docTitle("# 主标题\n\n正文", "fallback"); got != "主标题" {
+		t.Errorf("docTitle 首个 H1: %q", got)
+	}
+	if got := docTitle("没有标题", "fallback"); got != "fallback" {
+		t.Errorf("docTitle 回退: %q", got)
+	}
+	if got := docTitle("  ## 二级不算\n正文", "fallback"); got != "fallback" {
+		t.Errorf("docTitle 只认一级标题: %q", got)
+	}
+}
+
+func TestSafeURL(t *testing.T) {
+	cases := map[string]string{
+		"https://github.com/a/b": "https://github.com/a/b",
+		"http://example.com":     "http://example.com",
+		"javascript:alert(1)":    "",
+		"data:text/html,x":       "",
+		"//evil.com":             "",
+		"":                       "",
+		"/relative/path":         "",
+	}
+	for in, want := range cases {
+		if got := safeURL(in); got != want {
+			t.Errorf("safeURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestDeriveRepo(t *testing.T) {
+	cases := map[string]string{
+		"https://acg-q.github.io/userscript-console": "acg-q/userscript-console",
+		"https://acg-q.github.io":                    "",
+		"https://example.com/repo":                   "",
+		"":                                           "",
+		"not a url":                                  "",
+	}
+	for in, want := range cases {
+		if got := deriveRepo(in); got != want {
+			t.Errorf("deriveRepo(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestCmdTime(t *testing.T) {
+	cases := map[string]string{
+		"2026-10-01T12:34:56Z": "2026-10-01 12:34",
+		"2026-10-01T12:34:56":  "2026-10-01 12:34",
+		"":                     "—",
+		"garbage":              "garbage",
+	}
+	for in, want := range cases {
+		if got := cmdTime(in); got != want {
+			t.Errorf("cmdTime(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestFirst10(t *testing.T) {
+	if got := first10("2026-10-05T00:00:00Z"); got != "2026-10-05" {
+		t.Errorf("first10 = %q", got)
+	}
+	if got := first10("短"); got != "短" {
+		t.Errorf("first10 短串应原样: %q", got)
+	}
+}
+
+// ── 文档页 ───────────────────────────────────────────────────
+
+// writeDocs 在 out 同级的 docs/ 写入文档文件。
+func writeDocs(t *testing.T, out string, files map[string]string) string {
+	t.Helper()
+	dir := filepath.Join(filepath.Dir(filepath.Clean(out)), "docs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// TestBuildWithDocs 有 index.md 时产 docs 页、nav 出「文档」、子页相对路径正确。
+func TestBuildWithDocs(t *testing.T) {
+	reg := buildTestRegistry(t)
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	writeDocs(t, outDir, map[string]string{
+		"index.md":           "# 文档中心\n\n欢迎。",
+		"SPEC-DATA-MODEL.md": "# 数据模型\n\n内容。",
+	})
+
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://test.github.io/repo"}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.DocHTMLs) != 2 {
+		t.Fatalf("应产 2 个文档页, got %d: %v", len(out.DocHTMLs), out.DocHTMLs)
+	}
+	idx, ok := out.DocHTMLs["index.html"]
+	if !ok {
+		t.Fatal("缺 docs/index.html")
+	}
+	if !strings.Contains(idx, "文档中心") || !strings.Contains(idx, `href="spec-data-model.html"`) {
+		t.Errorf("docs/index 应含标题与目录链接")
+	}
+	spec := out.DocHTMLs["spec-data-model.html"]
+	if !strings.Contains(spec, "数据模型") || !strings.Contains(spec, `href="index.html"`) {
+		t.Errorf("子文档页应含标题与回目录链接")
+	}
+	if !strings.Contains(spec, `href="../index.html"`) {
+		t.Errorf("文档页根链接应为 ../index.html")
+	}
+	// nav HasDocs
+	if !strings.Contains(out.IndexHTML, `href="docs/index.html"`) {
+		t.Errorf("首页 nav 应含文档链接")
+	}
+	if !strings.Contains(out.DetailHTMLs["self01"], `href="../docs/index.html"`) {
+		t.Errorf("详情页 nav 应含 ../docs/index.html")
+	}
+}
+
+// TestBuildWithoutIndexMD 无 index.md → 不产 docs（nav 死链防护）。
+func TestBuildWithoutIndexMD(t *testing.T) {
+	reg := buildTestRegistry(t)
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	writeDocs(t, outDir, map[string]string{"orphan.md": "# 孤儿"})
+
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://test.github.io/repo"}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.DocHTMLs) != 0 {
+		t.Errorf("无 index.md 不应产文档页, got %v", out.DocHTMLs)
+	}
+	if strings.Contains(out.IndexHTML, "docs/index.html") {
+		t.Errorf("无文档页时 nav 不应出现文档链接")
+	}
+}
+
+// TestBuildDocsSlugConflict slug 冲突应报错而非静默覆盖。
+func TestBuildDocsSlugConflict(t *testing.T) {
+	reg := buildTestRegistry(t)
+	outDir := isolatedOut(t)
+	writeDocs(t, outDir, map[string]string{
+		"index.md": "# 首页",
+		"a b.md":   "# A",
+		"a-b.md":   "# B（与 a b.md 同 slug）",
+	})
+	_, err := Build(reg, Options{Out: outDir, PagesBase: "https://test.github.io/repo"}, Data{})
+	if err == nil {
+		t.Fatal("slug 冲突应返回 error")
+	}
+	if !strings.Contains(err.Error(), "slug 冲突") {
+		t.Errorf("错误应说明 slug 冲突: %v", err)
 	}
 }

@@ -1,69 +1,26 @@
 {{define "commands"}}
-<!doctype html>
-<html lang="zh-CN">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>命令归档</title>
-    <style>
-        :root { --bg: #fafafa; --card-bg: #fff; --border: #e0e0e0; --text: #333; --muted: #666; --brand: #0969da; --brand-hover: #0860ca; --on-accent: #fff; }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
-        .container { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
-        h1 { margin-bottom: 1.5rem; font-size: 1.5rem; }
-        .back { display: inline-block; margin-bottom: 1rem; font-size: 0.875rem; color: var(--brand); }
-        .back:hover { text-decoration: none; }
-        .stat-bar { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; padding: 0.5rem 1rem; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; }
-        .stat-bar .count { color: var(--muted); font-size: 0.875rem; }
-        .stat-bar .total { color: var(--brand); font-weight: 500; }
-        .entry { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; margin-bottom: 1.5rem; }
-        .entry header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
-        .entry h2 { font-size: 1.1rem; font-weight: 600; margin: 0; }
-        .entry .meta { color: var(--muted); font-size: 0.875rem; }
-        .entry .body { margin-top: 0.5rem; white-space: pre-wrap; word-break: break-all; }
-        .entry .body code { padding: 0.2rem 0.4rem; background: #f0f0f0; border-radius: 4px; font-family: ui-monospace, monospace; }
-        .pagination { display: flex; gap: 0.5rem; justify-content: center; align-items: center; margin-top: 1.5rem; flex-wrap: wrap; }
-        .pagination a, .pagination span { padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; text-decoration: none; color: var(--text); font-size: 0.875rem; }
-        .pagination a:hover { border-color: var(--brand); color: var(--brand); }
-        .pagination .prev, .pagination .next { flex: none; }
-        .pagination .active { background: var(--brand); color: var(--on-accent); border-color: var(--brand); }
-        .empty-state { padding: 2rem; text-align: center; color: var(--muted); }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <a class="back" href="../index.html">← 返回脚本列表</a>
-        <h1>命令归档</h1>
-        <div class="stat-bar">
-            <span class="count">共 <b>{{.TotalItems}}</b> 条历史命令</span>
-            <span class="total">第 {{.Page}}/{{.TotalPages}} 页</span>
-        </div>
-        {{range $g := .Groups}}
-        <div class="entry">
-            <header>
-                <h2>{{$g.Command}}</h2>
-                <div class="meta">by {{$g.Author}} · {{$g.CreatedAt}}</div>
-            </header>
-            {{range $g.Results}}
-            <div class="body"><b>{{.Author}}</b>：{{.Body}}</div>
-            {{else}}
-            <div class="body">无执行结果</div>
-            {{end}}
-        </div>
-        {{else}}
-        <p class="empty-state">还没有归档记录</p>
-        {{end}}
-        {{if gt .TotalPages 1}}
-        <div class="pagination">
-            {{if gt .Page 1}}<a class="prev" href="page-{{sub .Page 1}}.html">上一页</a>{{end}}
-            {{range $i := seq .TotalPages}}
-                {{if eq (add $i 1) $.Page}}<span class="active">{{$i}}</span>
-                {{else}}<a href="page-{{add $i 1}}.html">{{$i}}</a>{{end}}
-            {{end}}
-            {{if lt .Page .TotalPages}}<a class="next" href="page-{{add .Page 1}}.html">下一页</a>{{end}}
-        </div>
-        {{end}}
-    </div>
-</body>
-</html>
+<main>
+<section class="detail-card">
+<h3 class="cmd-title">命令归档</h3>
+<p class="cmd-sub">{{.Note}}</p>
+{{if .Entries}}
+{{range .Entries}}
+<article class="cmd-item">
+<div class="cmd-line"><b>{{.Author}}</b><time>{{.When}}</time><span class="cmd-no">#{{.No}}</span></div>
+<pre>{{.Command}}</pre>
+{{if .Results}}{{range .Results}}<div class="cmd-res"><div class="cmd-line"><b>{{.Author}}</b><time>{{.When}}</time></div><pre>{{.Body}}</pre></div>{{end}}{{else}}<p class="cmd-none">没有执行结果</p>{{end}}
+</article>
+{{end}}
+{{else}}
+{{template "empty-state" .EmptyPanel}}
+{{end}}
+{{if gt .TotalPages 1}}
+<nav class="pager" aria-label="分页">
+{{if gt .Page 1}}<a class="btn ghost" href="page-{{sub .Page 1}}.html">上一页</a>{{end}}
+<span class="pager-now">第 {{.Page}} / {{.TotalPages}} 页</span>
+{{if lt .Page .TotalPages}}<a class="btn ghost" href="page-{{add .Page 1}}.html">下一页</a>{{end}}
+</nav>
+{{end}}
+</section>
+</main>
 {{end}}

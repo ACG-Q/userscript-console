@@ -1,134 +1,51 @@
 {{define "detail"}}
-<!doctype html>
-<html lang="zh-CN">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{.Script.Name}} · v{{.Script.Version}}</title>
-    <style>
-        :root { --bg: #fafafa; --card-bg: #fff; --border: #e0e0e0; --text: #333; --muted: #666; --brand: #0969da; --brand-hover: #0860ca; --on-accent: #fff; --text-muted: #6a737d; --info-bg: #ddf4ff; --info-text: #0969da; --warn-bg: #fff8c5; --warn-text: #7d4e00; --bg-subtle: #f6f8fa; --neutral-bg: #eaeef2; --brand-fade: rgba(9,105,218,.35); --border-strong: #d0d7de; --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
-        .container { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
-        h1 { margin-bottom: 0.5rem; font-size: 1.5rem; }
-        .meta { color: var(--muted); margin-bottom: 1.5rem; font-size: 0.875rem; }
-        .section { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
-        .section h2 { font-size: 1.1rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
-        .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 6px; font-size: 0.75rem; font-weight: 500; margin-right: 0.5rem; }
-        .badge-active { background: var(--info-bg); color: var(--info-text); }
-        .badge-sync { background: var(--warn-bg); color: var(--warn-text); }
-        .badge-ver { background: var(--bg-subtle); color: var(--text-muted); border: 1px solid var(--border); }
-        .tag { display: inline-block; padding: 2px 6px; background: var(--neutral-bg); color: var(--text-muted); font-size: 0.75rem; border-radius: 4px; margin-left: 4px; }
-        .tag-deleted { background: #fce8e6; color: #c5221f; }
-        table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
-        td, th { padding: 0.5rem; border: 1px solid var(--border); text-align: left; font-size: 0.875rem; }
-        th { background: var(--bg-subtle); }
-        .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-size: 0.875rem; font-weight: 500; transition: opacity 0.15s ease; }
-        .btn-primary { background: var(--brand); color: var(--on-accent); }
-        .btn-primary:hover { opacity: 0.9; }
-        .btn-secondary { background: var(--bg-subtle); color: var(--text); border: 1px solid var(--border); }
-        .btn-secondary:hover { opacity: 0.9; }
-        .tombstone { border-color: #c5221f; background: #fce8e6; }
-        .relative-time { color: var(--muted); font-size: 0.8rem; }
-        .tab { display: inline-block; padding: 0.5rem 1rem; cursor: pointer; border-bottom: 2px solid transparent; font-size: 0.875rem; color: var(--muted); transition: border-color 0.15s ease, color 0.15s ease; }
-        .tab.active { border-bottom-color: var(--brand); color: var(--brand); }
-        .tab-inactive { opacity: 0.5; pointer-events: none; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        .empty { color: var(--muted); padding: 1rem; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>{{.Script.Name}} <small>v{{.Script.Version}}</small></h1>
-        <div class="meta">
-            {{if .Script.Deleted}}<strong>已下架</strong> · {{else}}{{if .Script.Enabled}}已启用{{else}}已停用{{end}}{{end}}
-            · {{.Script.Type}} · ID: {{.Script.ID}}
-        </div>
-
-        <div class="section {{if .Script.Deleted}}tombstone{{end}}">
-            <h2>安装规则</h2>
-            {{if .Matches}}
-            <table>
-                <tr><th>#</th><th>规则</th></tr>
-                {{range $i, $m := .Matches}}<tr><td>{{$i}}</td><td>{{$m}}</td></tr>{{end}}
-            </table>
-            {{else}}<p class="empty">无匹配规则</p>{{end}}
-        </div>
-
-        {{if .Grants}}
-        <div class="section">
-            <h2>权限</h2>
-            <ul>
-                {{range .Grants}}<li>{{.}}</li>{{end}}
-            </ul>
-        </div>
-        {{end}}
-
-        {{if .Changelog}}
-        <div class="section">
-            <h2>更新日志</h2>
-            <table>
-                <tr><th>版本</th><th>日期</th><th>说明</th></tr>
-                {{range .Changelog}}<tr><td>{{.Version}}</td><td>{{.Date}}</td><td>{{.Note}}</td></tr>{{end}}
-            </table>
-        </div>
-        {{end}}
-
-        {{if .HasDiscussion}}
-        <div class="section">
-            <h2>版本讨论</h2>
-            <div id="discTabs">
-                {{range $i, $d := .Discussions}}
-                <span class="tab {{if eq $i 0}}active{{end}}" data-tab="{{$i}}">v{{.Version}}</span>
-                {{end}}
-            </div>
-            {{range $i, $d := .Discussions}}
-            <div class="tab-content {{if eq $i 0}}active{{end}}" id="tab-{{$i}}">
-                <p><a href="{{$d.URL}}">查看原版讨论帖</a></p>
-                {{if $d.Comments}}
-                <h3>评论</h3>
-                {{range $d.Comments}}
-                <div style="border-top:1px solid var(--border); padding:0.75rem 0;">
-                    <strong>{{.Author}}</strong> <span class="relative-time">{{call $.RelativeTime .CreatedAt}}</span>
-                    <div>{{.Body}}</div>
-                </div>
-                {{end}}
-                {{else}}
-                <p class="empty">暂无评论</p>
-                {{end}}
-            </div>
-            {{end}}
-            <script>
-            (function(){
-                var tabs = document.querySelectorAll('#discTabs .tab');
-                var contents = document.querySelectorAll('.tab-content');
-                tabs.forEach(function(t, i) {
-                    t.onclick = function() {
-                        tabs.forEach(function(x){x.classList.remove('active')});
-                        contents.forEach(function(x){x.classList.remove('active')});
-                        t.classList.add('active');
-                        contents[i].classList.add('active');
-                    };
-                });
-            })();
-            </script>
-        </div>
-        {{else if gt .IssueNumber 0}}
-        <div class="section">
-            <h2>面板 Issue</h2>
-            <p>Issue #{{.IssueNumber}}（评论数将在在线同步后显示）</p>
-        </div>
-        {{end}}
-
-        {{if not .Script.Deleted}}
-        <div class="section" style="justify-content: space-between;">
-            <a class="btn btn-primary" href="{{.PagesBase}}/dist/{{.Script.ID}}.user.js">下载脚本</a>
-            <a class="btn btn-secondary" href="../">返回首页</a>
-            <a href="../commands/page-1.html">命令归档 →</a>
-        </div>
-        {{end}}
-    </div>
-</body>
-</html>
+<main>
+<section class="detail-card">
+<a class="back" href="../index.html">← 返回列表</a>
+<div class="d-head">
+<div>
+<div class="d-pills">{{template "type-pill" .Script}}{{template "version-pill" .Script}}{{template "status-badge" .Script}}{{if .Script.Deleted}}<span class="pill" data-tip="该脚本已从注册表下架">已下架</span>{{end}}</div>
+<h3>{{.Script.Name}}</h3>
+</div>
+{{if not .Script.Deleted}}{{template "install-btn" .Install}}{{end}}
+</div>
+<div class="d-meta"><span><i>作者</i>{{.Author}}</span>{{if .When}}<span><i>更新</i>{{.When}}</span>{{end}}<span><i>匹配规则</i>{{if .Matches}}{{range $i, $m := .Matches}}{{if $i}} {{end}}<code>{{$m}}</code>{{end}}{{else}}-{{end}}</span></div>
+{{if .Description}}<p class="sc-desc">{{.Description}}</p>{{end}}
+<section class="d-doc">{{.DocHTML}}</section>
+{{if .HasPosts}}{{$first := index .Posts 0}}
+<section class="d-disc">
+<div class="disc-head">{{template "icon-comment"}}讨论
+<span class="disc-badges" id="discBadges">{{template "post-badges" $first}}</span>
+<span class="grow"></span>
+{{if $first.URL}}<a id="discLink" href="{{$first.URL}}" target="_blank" rel="noopener noreferrer">在 GitHub 打开本帖 →</a>{{end}}
+<div class="disc-ver">
+<button type="button" class="disc-ver-btn" id="discVerBtn" aria-haspopup="listbox" aria-expanded="false" aria-label="切换讨论版本"><span id="discVerLabel">{{$first.Label}}</span><svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>
+<div class="disc-ver-menu" id="discVerMenu" role="listbox" aria-label="选择版本帖" hidden>
+{{range $i, $p := .Posts}}<button type="button" class="disc-ver-item{{if eq $i 0}} active{{end}}" role="option" aria-selected="{{if eq $i 0}}true{{else}}false{{end}}" data-i="{{$i}}">{{$p.Label}}{{if $p.Number}}<span class="num">#{{$p.Number}}</span>{{end}}</button>{{end}}
+</div>
+</div>
+</div>
+<div id="discComments">
+{{if $first.Comments}}{{range $first.Comments}}{{template "cmt" .}}{{end}}{{else}}{{template "empty-state" $.EmptyComments}}{{end}}
+</div>
+<template id="discEmpty">{{template "empty-state" .EmptyComments}}</template>
+<script type="application/json" id="discData">{{.DiscJSON}}</script>
+</section>
+{{else}}
+<section class="d-disc">
+<div class="disc-head">{{template "icon-comment"}}讨论</div>
+{{template "empty-state" .FallbackPanel}}
+</section>
+{{end}}
+<section class="d-doc">
+<h2>更新历史</h2>
+{{if .Changelog}}
+<table>
+<thead><tr><th>版本</th><th>日期</th><th>说明</th></tr></thead>
+<tbody>{{range .Changelog}}<tr><td>{{.Version}}</td><td>{{.Date}}</td><td>{{.Note}}</td></tr>{{end}}</tbody>
+</table>
+{{else}}{{template "empty-state" .EmptyChangelog}}{{end}}
+</section>
+</section>
+</main>
 {{end}}

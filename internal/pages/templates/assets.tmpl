@@ -1,11 +1,4 @@
-<!DOCTYPE html>
-<html lang="zh-CN" data-theme="github-light">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>示例同步脚本</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><text y=%2215%22 font-size=%2224%22 text-anchor=%22middle%22 fill=%22%233b82f6%22>📜</text></svg>">
-<style>
+{{define "token-css"}}
 :root, [data-theme="github-light"] {
   --brand: #0969da;
   --brand-hover: #0860ca;
@@ -95,7 +88,8 @@
   --tip-bg: #24292f;
   --tip-fg: #ffffff;
 }
-
+{{end}}
+{{define "component-css"}}
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
@@ -146,7 +140,7 @@ main { padding: 8px 28px 36px; }
 .chip:hover { border-color: var(--border-strong); }
 .chip.active { background: var(--brand); border-color: var(--brand); color: var(--on-accent); }
 
- 
+/* 首屏之外的卡片：scripts.json 懒加载（滚动到底或点加载更多） */
 #listSentinel { height: 1px; }
 #loadMore { display: flex; margin: 16px auto 0; min-width: 172px; }
 #loadMore[disabled] { opacity: .7; cursor: progress; }
@@ -228,7 +222,7 @@ main { padding: 8px 28px 36px; }
 .cmt-replies .cmt:first-child { border-top: none; padding-top: 8px; }
 .d-disc .btn { margin-top: 12px; }
 
- 
+/* --- 版本帖切换（详情页评论区） --- */
 .disc-badges { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .disc-ver { position: relative; font-size: 13.5px; }
 .disc-ver-btn { display: inline-flex; align-items: center; gap: 5px; border: none; background: transparent; color: var(--brand); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; padding: 6px 6px; border-radius: 8px; min-height: 34px; }
@@ -247,7 +241,7 @@ main { padding: 8px 28px 36px; }
 footer.foot { padding: 18px 28px; font-size: 13px; display: flex; gap: 14px; flex-wrap: wrap; align-items: center; color: var(--text-muted); border-top: 1px solid var(--border); }
 footer.foot a { font-weight: 600; }
 
- 
+/* --- 命令归档页（commands/page-N.html） --- */
 .cmd-title { margin: 0 0 6px; font-size: 20px; }
 .cmd-sub { margin: 0 0 16px; font-size: 13.5px; color: var(--text-muted); }
 .cmd-item { padding: 14px 0; border-top: 1px solid var(--border); }
@@ -282,9 +276,9 @@ footer.foot a { font-weight: 600; }
 [data-tip]:hover::after, [data-tip]:hover::before,
 [data-tip]:focus-within::after, [data-tip]:focus-within::before { opacity: 1; }
 
- 
+/* ================= 响应式：900 / 600 三段 ================= */
 
- 
+/* --- 平板：900px 以下 --- */
 @media (max-width: 900px) {
   .script-card { grid-template-columns: 1fr 1fr; }
   .sc-main { grid-column: 1 / -1; }
@@ -293,11 +287,11 @@ footer.foot a { font-weight: 600; }
   .hero h1 { font-size: 26px; }
 }
 
- 
+/* --- 手机：600px 以下 --- */
 @media (max-width: 600px) {
   body { padding: 16px 8px; padding-bottom: calc(env(safe-area-inset-bottom, 0) + 16px); }
 
-   
+  /* --- 顶部导航：只留 brand（缩写）+ 管理按钮 --- */
   .nav { padding: 10px 16px; gap: 10px; flex-wrap: nowrap; min-width: 0; }
   .brand { font-size: 15px; gap: 8px; }
   .brand-full { display: none; }
@@ -311,7 +305,7 @@ footer.foot a { font-weight: 600; }
   .hero h1 { font-size: 22px; }
   .hero .sub { font-size: 13.5px; }
 
-   
+  /* --- 统计块：1 1 / 2（第三块拉满整行） --- */
   .stats {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -330,7 +324,7 @@ footer.foot a { font-weight: 600; }
   .sc-title h3 { font-size: 15px; }
   .sc-desc { font-size: 13.5px; }
 
-   
+  /* 手机端操作按钮横向一行 */
   .sc-actions { flex-direction: row; flex-wrap: nowrap; gap: 8px; }
   .sc-actions .btn { flex: 1 1 0; min-width: 0; padding: 0 10px; font-size: 13px; }
 
@@ -347,7 +341,7 @@ footer.foot a { font-weight: 600; }
   .cmt { font-size: 13.5px; }
   .d-disc .btn { width: 100%; }
 
-   
+  /* 版本切换：触控目标 44px，菜单不超出面板 */
   .disc-ver-btn { min-height: 44px; }
   .disc-ver-menu { min-width: 196px; }
   .disc-ver-item { min-height: 44px; }
@@ -356,7 +350,7 @@ footer.foot a { font-weight: 600; }
 
   .seg-control button { padding: 4px 8px; font-size: 11px; }
 
-   
+  /* 设置入口：贴边半隐藏（默认只露图标条） */
   .theme-rail {
     top: auto; bottom: calc(env(safe-area-inset-bottom, 0) + 16px);
     transform: translateX(calc(100% - 34px));
@@ -425,62 +419,132 @@ footer.foot a { font-weight: 600; }
 .swatch { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, .15); flex: none; }
 .check { margin-left: auto; font-weight: 700; visibility: hidden; }
 .theme-list button[aria-pressed="true"] .check { visibility: visible; }
-
+{{end}}
+{{define "preview-css"}}
 .pv-a { --pv-bar-bg: #fff; --pv-bar-bd: #d8dee4; --pv-bar-fg: #0969da; --pv-hero-bg: #f6f8fa; --pv-title: #1f2328; --pv-sub: #8c959f; --pv-stat-bg: #fff; --pv-stat-bd: #d8dee4; --pv-accent: #0969da; --pv-body-bg: #fff; --pv-card-bg: #fff; --pv-card-bd: #d8dee4; }
 .pv-b { --pv-bar-bg: #0b0e0c; --pv-bar-bd: #2c302c; --pv-bar-fg: #3fb950; --pv-hero-bg: #0b0e0c; --pv-title: #eef1ef; --pv-sub: #898f8a; --pv-stat-bg: #191f1a; --pv-stat-bd: #2c302c; --pv-accent: #3fb950; --pv-body-bg: #101411; --pv-card-bg: #191f1a; --pv-card-bd: #2c302c; }
 .pv-c { --pv-bar-bg: linear-gradient(135deg, #6e56cf, #8b5cf6 55%, #a855f7); --pv-bar-bd: transparent; --pv-bar-fg: #fff; --pv-hero-bg: linear-gradient(135deg, #6e56cf, #8b5cf6 55%, #a855f7); --pv-title: #fff; --pv-sub: #e9e4ff; --pv-stat-bg: rgba(255, 255, 255, .13); --pv-stat-bd: rgba(255, 255, 255, .33); --pv-accent: #6e56cf; --pv-body-bg: #faf9ff; --pv-card-bg: #fff; --pv-card-bd: #ece8f8; }
 .swatch-a { background: #0969da; }
 .swatch-b { background: #3fb950; }
 .swatch-c { background: #8b5cf6; }
-</style>
-<script>try { var t = localStorage.getItem('asm-theme'); if (t === 'github-light' || t === 'terminal-dark' || t === 'vivid-purple') { document.documentElement.setAttribute('data-theme', t); } } catch (e) { console.warn('无法读取主题偏好', e); }}</script>
-</head>
-<body>
-<div class="frame">
-<header class="nav">
-<a class="brand" href="../index.html"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg><span class="brand-full">脚本控制台</span><span class="brand-short">控制台</span></a>
-<span class="spacer"></span>
+{{end}}
+{{define "filter-js"}}<script>
+document.querySelectorAll('.chip').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    document.querySelectorAll('.chip').forEach(function (b) { b.classList.toggle('active', b === btn); });
+    var cards = document.querySelectorAll('.script-card');
+    var visible = 0;
+    cards.forEach(function (card) {
+      var show = btn.dataset.filter === 'all' || card.dataset.type === btn.dataset.filter;
+      card.hidden = !show;
+      if (show) visible += 1;
+    });
+    var empty = document.getElementById('filter-empty');
+    if (empty) empty.hidden = !(cards.length > 0 && visible === 0);
+  });
+});
+</script>{{end}}
+{{define "list-js"}}<script>
+(function () {
+  var list = document.getElementById('scriptList');
+  if (!list) return;
+  var sentinel = document.getElementById('listSentinel');
+  var more = document.getElementById('loadMore');
+  var end = document.getElementById('listEnd');
+  var batch = parseInt(list.dataset.batch, 10) || 10;
+  var total = parseInt(list.dataset.total, 10) || 0;
+  var shown = list.querySelectorAll('.script-card').length;
+  var items = null;
+  var pending = false;
 
-<a class="link" href="https://github.com/acg-q/userscript-console" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>
-<a class="link" href="../commands/page-1.html">命令归档</a>
-<a class="btn nav-btn" href="https://github.com/acg-q/userscript-console/issues/1" target="_blank" rel="noopener noreferrer"><span class="btn-label-full">管理入口 · Issue #1</span><span class="btn-label-short">管理</span></a>
-</header>
+  function activeFilter() {
+    var chip = document.querySelector('.chip.active');
+    return chip ? (chip.dataset.filter || 'all') : 'all';
+  }
 
-<main>
-<section class="detail-card">
-<a class="back" href="../index.html">← 返回列表</a>
-<div class="d-head">
-<div>
-<div class="d-pills"><span class="pill type-sync" data-tip="从外部来源自动同步的脚本">同步 · greasyfork</span><span class="pill ver" data-tip="当前版本">v2.0.0</span><span class="status off" data-tip="脚本已禁用，暂不可安装"><span class="dot" aria-hidden="true"></span>已禁用</span></div>
-<h3>示例同步脚本</h3>
-</div>
-<span class="btn primary disabled" aria-disabled="true" data-tip="脚本已禁用，暂不可安装">安装脚本</span>
-</div>
-<div class="d-meta"><span><i>作者</i>upstream</span><span><i>更新</i>2026-10-04</span><span><i>匹配规则</i><code>*://*/*</code></span></div>
-<p class="sc-desc">来自 GreasyFork 的同步脚本</p>
-<section class="d-doc"><p><em>暂无文档</em></p>
-</section>
+  function applyFilter(card, f) {
+    card.hidden = !(f === 'all' || card.dataset.type === f);
+  }
 
-<section class="d-disc">
-<div class="disc-head"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>讨论</div>
-<div class="empty-state sm" role="status"><svg width="104" height="88" viewBox="0 0 104 88" aria-hidden="true"><rect class="es-doc" x="30" y="6" width="38" height="46" rx="4"/><rect class="es-line" x="37" y="16" width="24" height="4" rx="2"/><rect class="es-line" x="37" y="25" width="24" height="4" rx="2"/><rect class="es-line" x="37" y="34" width="15" height="4" rx="2"/><path class="es-tray" d="M16 50 h72 a6 6 0 0 1 6 6 v10 H10 v-10 a6 6 0 0 1 6 -6 z"/><rect class="es-lip" x="6" y="66" width="92" height="10" rx="5"/><g class="es-bub"><rect x="76" y="2" width="26" height="18" rx="6"/><path d="M82 18 l1 8 l7 -6 z"/><circle cx="83" cy="11" r="1.8"/><circle cx="89" cy="11" r="1.8"/><circle cx="95" cy="11" r="1.8"/></g></svg><p>还没有讨论</p><p><a href="https://github.com/acg-q/userscript-console/issues?q=is%3Aissue&#43;label%3Ascript" target="_blank" rel="noopener noreferrer">发起讨论 →</a></p></div>
-</section>
+  function refreshEmpty() {
+    var box = document.getElementById('filter-empty');
+    if (!box) return;
+    var loaded = list.querySelectorAll('.script-card').length;
+    var visible = list.querySelectorAll('.script-card:not([hidden])').length;
+    box.hidden = !(loaded > 0 && visible === 0);
+  }
 
-<section class="d-doc">
-<h2>更新历史</h2>
-<div class="empty-state" role="status"><svg width="104" height="88" viewBox="0 0 104 88" aria-hidden="true"><rect class="es-doc" x="30" y="6" width="38" height="46" rx="4"/><rect class="es-line" x="37" y="16" width="24" height="4" rx="2"/><rect class="es-line" x="37" y="25" width="24" height="4" rx="2"/><rect class="es-line" x="37" y="34" width="15" height="4" rx="2"/><path class="es-tray" d="M16 50 h72 a6 6 0 0 1 6 6 v10 H10 v-10 a6 6 0 0 1 6 -6 z"/><rect class="es-lip" x="6" y="66" width="92" height="10" rx="5"/><g class="es-bub"><rect x="76" y="2" width="26" height="18" rx="6"/><path d="M82 18 l1 8 l7 -6 z"/><circle cx="83" cy="11" r="1.8"/><circle cx="89" cy="11" r="1.8"/><circle cx="95" cy="11" r="1.8"/></g></svg><p>暂无更新记录。</p></div>
-</section>
-</section>
-</main>
+  function updateTail() {
+    var done = shown >= total;
+    if (more) { more.hidden = done; if (!pending) more.textContent = '加载更多'; }
+    if (sentinel) sentinel.hidden = done;
+    if (end) end.hidden = !done;
+  }
 
-<footer class="foot">
-<span>由 <a href="https://github.com/acg-q/userscript-console" target="_blank" rel="noopener noreferrer">acg-q/userscript-console</a> 自动生成</span>
-<a href="../commands/page-1.html">命令归档</a>
-<a href="https://github.com/acg-q/userscript-console/issues/1" target="_blank" rel="noopener noreferrer">管理入口 · Issue #1</a>
-<a href="https://github.com/acg-q/userscript-console" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>
-</footer>
-</div>
-<script>
+  function appendBatch() {
+    if (items === null || shown >= total) { updateTail(); refreshEmpty(); return; }
+    var f = activeFilter();
+    var frag = document.createDocumentFragment();
+    var added = 0;
+    while (shown < total && added < batch) {
+      var item = items[shown];
+      var wrap = document.createElement('div');
+      wrap.innerHTML = item && item.html ? item.html : '';
+      var card = wrap.firstElementChild;
+      if (card) { applyFilter(card, f); frag.appendChild(card); }
+      shown += 1;
+      added += 1;
+    }
+    list.insertBefore(frag, sentinel || null);
+    updateTail();
+    refreshEmpty();
+    // 当前筛选一条都没命中且后面还有 → 继续补下一批
+    if (!list.querySelector('.script-card:not([hidden])') && shown < total) appendBatch();
+  }
+
+  function ensureData() {
+    if (items !== null) { appendBatch(); return; }
+    if (pending) return;
+    pending = true;
+    if (more) { more.disabled = true; more.textContent = '加载中…'; }
+    fetch('scripts.json')
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (data) {
+        items = Array.isArray(data) ? data : [];
+        pending = false;
+        if (more) more.disabled = false;
+        appendBatch();
+      })
+      .catch(function (err) {
+        pending = false;
+        if (more) { more.disabled = false; more.textContent = '加载失败，点击重试'; }
+        console.warn('scripts.json 加载失败', err);
+      });
+  }
+
+  if (more) more.addEventListener('click', ensureData);
+
+  if (sentinel && 'IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) ensureData(); });
+    }, { rootMargin: '400px 0px' });
+    io.observe(sentinel);
+  }
+
+  // 筛选切换：重算已加载卡片；一条都没命中且还有余量时继续补载
+  document.addEventListener('click', function (e) {
+    var chip = e.target && e.target.closest ? e.target.closest('.chip') : null;
+    if (!chip) return;
+    setTimeout(function () {
+      var f = activeFilter();
+      list.querySelectorAll('.script-card').forEach(function (c) { applyFilter(c, f); });
+      refreshEmpty();
+      if (!list.querySelector('.script-card:not([hidden])') && shown < total) ensureData();
+    }, 0);
+  });
+})();
+</script>{{end}}
+{{define "disc-js"}}<script>
 (function () {
   var dataEl = document.getElementById('discData');
   if (!dataEl) return;
@@ -504,7 +568,7 @@ footer.foot a { font-weight: 600; }
     return i === 0 ? v + '（最新）' : v;
   }
 
-  
+  // 徽标 HTML 只由布尔值与数字拼成，正文一律走 textContent
   function badgesHtml(p) {
     var n = p.reply_count || 0;
     if (p.is_answered) {
@@ -602,32 +666,8 @@ footer.foot a { font-weight: 600; }
     if (e.key === 'Escape') setOpen(false);
   });
 })();
-</script>
-<button type="button" class="theme-rail" id="themeRail" aria-expanded="false" aria-controls="settingsDrawer" aria-label="打开设置">
-<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-<span class="rail-text">设置</span>
-</button>
-<div class="sd-overlay" id="sdOverlay"></div>
-<aside class="settings-drawer" id="settingsDrawer" aria-hidden="true" aria-label="设置面板">
-<div class="sd-head">
-<h3>设置</h3>
-<button type="button" class="sd-close" aria-label="关闭设置">&times;</button>
-</div>
-<div class="sd-group">
-<h4>主题</h4>
-<ul class="theme-list">
-<li><button type="button" data-theme="github-light" aria-pressed="false"><span class="tl-preview pv-a" aria-hidden="true"><span class="pv-bar"><i class="pv-brand"></i><i class="pv-link"></i><i class="pv-link"></i><i class="pv-pill"></i></span><span class="pv-hero"><i class="pv-title"></i><i class="pv-sub"></i><span class="pv-stats"><i></i><i></i><i></i></span></span><span class="pv-body"><i class="pv-card"></i><i class="pv-card"></i></span></span><span class="tl-label"><span class="swatch swatch-a" aria-hidden="true"></span>清爽蓝<span class="check" aria-hidden="true">✓</span></span></button></li>
-<li><button type="button" data-theme="terminal-dark" aria-pressed="false"><span class="tl-preview pv-b" aria-hidden="true"><span class="pv-bar"><i class="pv-brand"></i><i class="pv-link"></i><i class="pv-link"></i><i class="pv-pill"></i></span><span class="pv-hero"><i class="pv-title"></i><i class="pv-sub"></i><span class="pv-stats"><i></i><i></i><i></i></span></span><span class="pv-body"><i class="pv-card"></i><i class="pv-card"></i></span></span><span class="tl-label"><span class="swatch swatch-b" aria-hidden="true"></span>硬核绿<span class="check" aria-hidden="true">✓</span></span></button></li>
-<li><button type="button" data-theme="vivid-purple" aria-pressed="false"><span class="tl-preview pv-c" aria-hidden="true"><span class="pv-bar"><i class="pv-brand"></i><i class="pv-link"></i><i class="pv-link"></i><i class="pv-pill"></i></span><span class="pv-hero"><i class="pv-title"></i><i class="pv-sub"></i><span class="pv-stats"><i></i><i></i><i></i></span></span><span class="pv-body"><i class="pv-card"></i><i class="pv-card"></i></span></span><span class="tl-label"><span class="swatch swatch-c" aria-hidden="true"></span>表达紫<span class="check" aria-hidden="true">✓</span></span></button></li>
-</ul>
-</div>
-<div class="sd-group">
-<h4>更多功能</h4>
-<p class="sd-soon">规划中</p>
-</div>
-</aside>
-
-<script>
+</script>{{end}}
+{{define "theme-js"}}<script>
 (function () {
   var KEY = 'asm-theme';
   var root = document.documentElement;
@@ -677,6 +717,93 @@ footer.foot a { font-weight: 600; }
     if (e.key === 'Escape' && drawer.classList.contains('open')) setDrawer(false);
   });
 })();
-</script>
+</script>{{end}}
+{{define "icon-comment"}}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{{end}}
+{{define "icon-check"}}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>{{end}}
+{{define "empty-svg"}}<svg width="104" height="88" viewBox="0 0 104 88" aria-hidden="true"><rect class="es-doc" x="30" y="6" width="38" height="46" rx="4"/><rect class="es-line" x="37" y="16" width="24" height="4" rx="2"/><rect class="es-line" x="37" y="25" width="24" height="4" rx="2"/><rect class="es-line" x="37" y="34" width="15" height="4" rx="2"/><path class="es-tray" d="M16 50 h72 a6 6 0 0 1 6 6 v10 H10 v-10 a6 6 0 0 1 6 -6 z"/><rect class="es-lip" x="6" y="66" width="92" height="10" rx="5"/><g class="es-bub"><rect x="76" y="2" width="26" height="18" rx="6"/><path d="M82 18 l1 8 l7 -6 z"/><circle cx="83" cy="11" r="1.8"/><circle cx="89" cy="11" r="1.8"/><circle cx="95" cy="11" r="1.8"/></g></svg>{{end}}
+{{define "theme-markup"}}<button type="button" class="theme-rail" id="themeRail" aria-expanded="false" aria-controls="settingsDrawer" aria-label="打开设置">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+<span class="rail-text">设置</span>
+</button>
+<div class="sd-overlay" id="sdOverlay"></div>
+<aside class="settings-drawer" id="settingsDrawer" aria-hidden="true" aria-label="设置面板">
+<div class="sd-head">
+<h3>设置</h3>
+<button type="button" class="sd-close" aria-label="关闭设置">&times;</button>
+</div>
+<div class="sd-group">
+<h4>主题</h4>
+<ul class="theme-list">
+<li><button type="button" data-theme="github-light" aria-pressed="false"><span class="tl-preview pv-a" aria-hidden="true"><span class="pv-bar"><i class="pv-brand"></i><i class="pv-link"></i><i class="pv-link"></i><i class="pv-pill"></i></span><span class="pv-hero"><i class="pv-title"></i><i class="pv-sub"></i><span class="pv-stats"><i></i><i></i><i></i></span></span><span class="pv-body"><i class="pv-card"></i><i class="pv-card"></i></span></span><span class="tl-label"><span class="swatch swatch-a" aria-hidden="true"></span>清爽蓝<span class="check" aria-hidden="true">✓</span></span></button></li>
+<li><button type="button" data-theme="terminal-dark" aria-pressed="false"><span class="tl-preview pv-b" aria-hidden="true"><span class="pv-bar"><i class="pv-brand"></i><i class="pv-link"></i><i class="pv-link"></i><i class="pv-pill"></i></span><span class="pv-hero"><i class="pv-title"></i><i class="pv-sub"></i><span class="pv-stats"><i></i><i></i><i></i></span></span><span class="pv-body"><i class="pv-card"></i><i class="pv-card"></i></span></span><span class="tl-label"><span class="swatch swatch-b" aria-hidden="true"></span>硬核绿<span class="check" aria-hidden="true">✓</span></span></button></li>
+<li><button type="button" data-theme="vivid-purple" aria-pressed="false"><span class="tl-preview pv-c" aria-hidden="true"><span class="pv-bar"><i class="pv-brand"></i><i class="pv-link"></i><i class="pv-link"></i><i class="pv-pill"></i></span><span class="pv-hero"><i class="pv-title"></i><i class="pv-sub"></i><span class="pv-stats"><i></i><i></i><i></i></span></span><span class="pv-body"><i class="pv-card"></i><i class="pv-card"></i></span></span><span class="tl-label"><span class="swatch swatch-c" aria-hidden="true"></span>表达紫<span class="check" aria-hidden="true">✓</span></span></button></li>
+</ul>
+</div>
+<div class="sd-group">
+<h4>更多功能</h4>
+<p class="sd-soon">规划中</p>
+</div>
+</aside>
+{{end}}
+{{define "empty-state"}}<div class="empty-state{{if .Small}} sm{{end}}"{{if .ID}} id="{{.ID}}"{{end}}{{if .Hidden}} hidden{{end}} role="status">{{template "empty-svg"}}<p>{{.Text}}</p>{{if .LinkHref}}<p><a href="{{.LinkHref}}"{{if .External}} target="_blank" rel="noopener noreferrer"{{end}}>{{.LinkText}}</a></p>{{end}}</div>{{end}}
+{{define "install-btn"}}{{if .Enabled}}<a class="btn primary" href="{{.PagesBase}}/dist/{{.ID}}.user.js" target="_blank" rel="noopener noreferrer">{{.Label}}</a>{{else}}<span class="btn primary disabled" aria-disabled="true" data-tip="脚本已禁用，暂不可安装">{{.Label}}</span>{{end}}{{end}}
+{{define "type-pill"}}{{if eq .Type "self"}}<span class="pill type-self" data-tip="本仓库自主编写的脚本">自写</span>{{else}}<span class="pill type-sync" data-tip="从外部来源自动同步的脚本">同步{{if .SourceType}} · {{.SourceType}}{{end}}</span>{{end}}{{end}}
+{{define "version-pill"}}{{if .Version}}<span class="pill ver" data-tip="当前版本">v{{.Version}}</span>{{end}}{{end}}
+{{define "status-badge"}}{{if .Enabled}}<span class="status" data-tip="脚本已启用，安装链接可用"><span class="dot" aria-hidden="true"></span>启用</span>{{else}}<span class="status off" data-tip="脚本已禁用，暂不可安装"><span class="dot" aria-hidden="true"></span>已禁用</span>{{end}}{{end}}
+{{define "issue-badges"}}{{if .Answered}}<span class="badge" data-tip="讨论已被标记为已解决">{{template "icon-check"}}已解决</span><span class="badge plain" data-tip="讨论回复总数">{{.ReplyCount}} 条回复</span>{{else if eq .ReplyCount 0}}<span class="badge plain" data-tip="该讨论还没有回复">0 条回复</span>{{else}}<span class="badge plain" data-tip="讨论尚未标记为已解决">{{.ReplyCount}} 条回复 · 待解决</span>{{end}}{{end}}
+{{define "post-badges"}}{{if .Answered}}<span class="badge" data-tip="该版本帖已被标记为已解决">{{template "icon-check"}}已解决</span><span class="badge plain" data-tip="讨论回复总数">{{.ReplyCount}} 条回复</span>{{else if eq .ReplyCount 0}}<span class="badge plain" data-tip="该版本帖还没有评论">0 条回复</span>{{else}}<span class="badge plain" data-tip="讨论尚未标记为已解决">{{.ReplyCount}} 条回复 · 待解决</span>{{end}}{{end}}
+{{define "cmt"}}<div class="cmt"><span class="cmt-who"><b>{{.Author}}</b></span><time>{{.Time}}</time><p>{{.Body}}</p></div>{{end}}
+{{define "script-card"}}<article class="script-card" data-type="{{.Type}}">
+<div class="sc-main">
+<div class="sc-title"><h3>{{.Name}}</h3>{{template "type-pill" .}}{{template "version-pill" .}}{{template "status-badge" .}}</div>
+{{if .Description}}<p class="sc-desc">{{.Description}}</p>{{end}}
+<p class="sc-meta"><code>{{if .MatchFirst}}{{.MatchFirst}}{{else}}—{{end}}</code>{{if .TimeLabel}} · {{.TimeLabel}}{{end}}</p>
+</div>
+{{template "card-disc" .}}
+<div class="sc-actions">
+{{template "install-btn" .}}
+<a class="btn ghost" href="scripts/{{.ID}}.html">详情</a>
+<a class="btn ghost" href="{{.DiscHref}}" target="_blank" rel="noopener noreferrer">讨论</a>
+</div>
+</article>{{end}}
+{{define "card-disc"}}<div class="sc-disc">
+{{if eq .Kind 0}}<div class="disc-head">{{template "icon-comment"}}讨论</div>
+{{template "empty-state" .NonePanel}}
+{{else if eq .Kind 1}}<div class="disc-head">{{template "icon-comment"}}讨论</div>
+{{template "empty-state" .DegradedPanel}}
+{{else}}<div class="disc-head">{{template "icon-comment"}}讨论{{template "issue-badges" .}}</div>
+{{if .HasLatest}}<p class="disc-latest">“{{.LatestBody}}”<span class="disc-who">{{.LatestWho}} · {{.LatestTime}}</span></p>{{end}}
+{{end}}</div>{{end}}
+{{define "page-shell"}}<!DOCTYPE html>
+<html lang="zh-CN" data-theme="github-light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>{{.Title}}</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><text y=%2215%22 font-size=%2224%22 text-anchor=%22middle%22 fill=%22%233b82f6%22>📜</text></svg>">
+<style>{{template "token-css"}}{{template "component-css"}}{{template "preview-css"}}</style>
+<script>try { var t = localStorage.getItem('asm-theme'); if (t === 'github-light' || t === 'terminal-dark' || t === 'vivid-purple') { document.documentElement.setAttribute('data-theme', t); } } catch (e) { console.warn('无法读取主题偏好', e); }}</script>
+</head>
+<body>
+<div class="frame">
+<header class="nav">
+<a class="brand" href="{{.RootHref}}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg><span class="brand-full">脚本控制台</span><span class="brand-short">控制台</span></a>
+<span class="spacer"></span>
+{{if .HasDocs}}<a class="link" href="{{.Rel}}docs/index.html">文档</a>{{end}}
+{{if .Repo}}<a class="link" href="https://github.com/{{.Repo}}" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>{{end}}
+<a class="link" href="{{.Rel}}commands/page-1.html">命令归档</a>
+{{if .Repo}}<a class="btn nav-btn" href="https://github.com/{{.Repo}}/issues/{{.Issue}}" target="_blank" rel="noopener noreferrer"><span class="btn-label-full">管理入口 · Issue #{{.Issue}}</span><span class="btn-label-short">管理</span></a>{{end}}
+</header>
+{{.Body}}
+<footer class="foot">
+<span>由 {{if .Repo}}<a href="https://github.com/{{.Repo}}" target="_blank" rel="noopener noreferrer">{{.Repo}}</a>{{else}}脚本控制台{{end}} 自动生成</span>
+<a href="{{.Rel}}commands/page-1.html">命令归档</a>
+{{if .Repo}}<a href="https://github.com/{{.Repo}}/issues/{{.Issue}}" target="_blank" rel="noopener noreferrer">管理入口 · Issue #{{.Issue}}</a>
+<a href="https://github.com/{{.Repo}}" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>{{end}}
+</footer>
+</div>
+{{.ExtraJS}}
+{{template "theme-markup"}}
+{{template "theme-js"}}
 </body>
-</html>
+</html>{{end}}

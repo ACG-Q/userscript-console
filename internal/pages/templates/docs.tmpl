@@ -1,0 +1,11 @@
+{{define "docs"}}
+<main>
+<section class="detail-card">
+<h3 class="cmd-title">{{.Title}}</h3>
+<nav class="cmd-sub" aria-label="文档目录">
+{{range $i, $d := .TOC}}{{if $i}} · {{end}}<a href="{{$d.Href}}">{{$d.Name}}</a>{{end}}
+</nav>
+<div class="d-doc">{{.Content}}</div>
+</section>
+</main>
+{{end}}

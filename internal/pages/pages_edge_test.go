@@ -77,8 +77,8 @@ func TestBuildSortsByIDWhenUpdatedAtEqual(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ia := strings.Index(got.ScriptsJSON, `"ID":"aaa1"`)
-	iz := strings.Index(got.ScriptsJSON, `"ID":"zzz1"`)
+	ia := strings.Index(got.ScriptsJSON, `scripts/aaa1.html`)
+	iz := strings.Index(got.ScriptsJSON, `scripts/zzz1.html`)
 	if ia < 0 || iz < 0 {
 		t.Fatalf("scripts.json 缺少脚本条目: %s", got.ScriptsJSON)
 	}
@@ -157,7 +157,7 @@ func TestBuildCommandPagesPagination(t *testing.T) {
 	}
 }
 
-func TestBuildDetailRendersIssueNumber(t *testing.T) {
+func TestBuildDetailFallbackPanelIssueLink(t *testing.T) {
 	reg := &registry.Registry{
 		Schema: registry.SchemaVersion,
 		Scripts: []registry.Script{
@@ -175,7 +175,10 @@ func TestBuildDetailRendersIssueNumber(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := got.DetailHTMLs["issue01"]
-	if !strings.Contains(html, "Issue #42") {
-		t.Errorf("详情页应回退渲染 IssueNumber=42:\n%s", html)
+	if !strings.Contains(html, "摘要暂不可用") {
+		t.Errorf("详情页无帖时应渲染回退面板 摘要暂不可用:\n%s", html)
+	}
+	if !strings.Contains(html, `href="https://github.com/test/issues/42"`) {
+		t.Errorf("回退面板应链到 Issue URL:\n%s", html)
 	}
 }
