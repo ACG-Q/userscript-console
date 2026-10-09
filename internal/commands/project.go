@@ -31,6 +31,7 @@ func runProject(env *Env, args string, codeBlocks []string) (Result, error) {
 	penv := &projector.Env{
 		Root:      env.Root,
 		RepoOwner: env.RepoOwner,
+		RepoName:  env.RepoName,
 		PagesBase: env.PagesBase,
 		GHClient:  env.GHClient,
 	}

@@ -226,6 +226,7 @@ func runCommandRun(args []string) int {
 	env := &commands.Env{
 		Root:            cli.EnvOr("USM_ROOT", "."),
 		RepoOwner:       flags.RepoOwner,
+		RepoName:        cli.EnvOr("GITHUB_REPOSITORY", cli.EnvOr("GH_REPO", "")),
 		CommentUser:     flags.CommentUser,
 		IssueNumber:     issueNum,
 		PagesBase:       flags.PagesBase,
@@ -276,6 +277,7 @@ func projectRun(args []string) int {
 	env := &commands.Env{
 		Root:      root,
 		RepoOwner: cli.EnvOr("GH_REPO_OWNER", ""),
+		RepoName:  cli.EnvOr("GITHUB_REPOSITORY", cli.EnvOr("GH_REPO", "")),
 		PagesBase: cli.EnvOr("PAGES_BASE", ""),
 		GHClient:  newGitHubClient(),
 		Now:       time.Now(),

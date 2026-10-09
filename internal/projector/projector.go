@@ -15,8 +15,18 @@ import (
 type Env struct {
 	Root      string
 	RepoOwner string
+	RepoName  string // owner/repo；Issue URL 需要完整仓库路径，仅 owner 会拼出 404
 	PagesBase string
 	GHClient  *github.Client
+}
+
+// issueURL 生成 Issue 链接：优先 RepoName（owner/repo），退回 RepoOwner 兼容旧配置。
+func issueURL(env *Env, number int) string {
+	repo := env.RepoName
+	if repo == "" {
+		repo = env.RepoOwner
+	}
+	return fmt.Sprintf("https://github.com/%s/issues/%d", repo, number)
 }
 
 // Result 投影结果统计。
@@ -92,7 +102,7 @@ func EnsureIssue(ctx context.Context, env *Env, r *registry.Registry, s *registr
 		s.Issue = &registry.IssueRef{
 			Number: matched.Number,
 			NodeID: matched.NodeID,
-			URL:    fmt.Sprintf("https://github.com/%s/issues/%d", env.RepoOwner, matched.Number),
+			URL:    issueURL(env, matched.Number),
 		}
 	} else {
 		iss, err := env.GHClient.CreateIssue(ctx, titlePrefix+" v"+s.Version, issueBody)
@@ -102,7 +112,7 @@ func EnsureIssue(ctx context.Context, env *Env, r *registry.Registry, s *registr
 		s.Issue = &registry.IssueRef{
 			Number: iss.Number,
 			NodeID: iss.NodeID,
-			URL:    fmt.Sprintf("https://github.com/%s/issues/%d", env.RepoOwner, iss.Number),
+			URL:    issueURL(env, iss.Number),
 		}
 	}
 
