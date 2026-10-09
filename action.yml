@@ -109,7 +109,7 @@ runs:
             echo "检测到大版本 tag ($ACTION_REF)，查询最新 v${MAJOR}.x release..."
             LATEST_TAG=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
               "https://api.github.com/repos/ACG-Q/userscript-console/releases?per_page=20" \
-              | jq -r "map(select(.tag_name | test(\"^v${MAJOR}\\.\"))) | .[0].tag_name // empty")
+              | jq -r "map(select(.tag_name | startswith(\"v${MAJOR}.\"))) | .[0].tag_name // empty")
             if [ -z "$LATEST_TAG" ]; then
               echo "::error::无法解析最新 v${MAJOR}.x release（API 返回空）。请显式传 binary-version: 'X.Y.Z'。"
               exit 1

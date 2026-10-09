@@ -316,6 +316,14 @@ func TestActionFetchBinaryAutoDeriveVersion(t *testing.T) {
 	if !strings.Contains(fetchStep, "Authorization: Bearer") {
 		t.Error("Fetch 步骤 API 调用应携带 GH_TOKEN 认证")
 	}
+	// 回归锁：jq 过滤必须用 startswith，不能用 test() 正则 ——
+	// test("^v1\.") 里的 \. 是 jq 非法转义，@v1 推导首用即炸（v1.1.5 事故）。
+	if !strings.Contains(fetchStep, `startswith(\"v${MAJOR}.\")`) {
+		t.Error("Fetch 步骤 jq 过滤应使用 startswith(\"v${MAJOR}.\")（正则 \\.) 在 jq 字符串中非法）")
+	}
+	if strings.Contains(fetchStep, `test(\"^v`) {
+		t.Error("Fetch 步骤不得使用 jq test() 正则匹配 tag（\\. 转义非法，已致 @v1 推导失败）")
+	}
 
 	// 无法推导时的明确报错（sha/分支/本地路径）
 	if !strings.Contains(fetchStep, "无法从 action ref 推导版本") {
