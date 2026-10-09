@@ -22,7 +22,6 @@ import (
 // siteGH 站点抓取所需的 GitHub 能力子集。声明为接口是为了测试可注入 fake
 // （*github.Client 天然满足），同时避免把 nil 指针塞进接口导致判空失效。
 type siteGH interface {
-	IssueStats(ctx context.Context, nodeIDs []string) ([]github.Stats, error)
 	DiscThread(ctx context.Context, nodeID string) (github.Thread, error)
 }
 
@@ -54,38 +53,21 @@ func (b *siteBuilder) Build(reg *registry.Registry) (int, bool, []string, error)
 }
 
 // fetchData 抓取详情页需要的 GitHub 侧数据。
-// 任何抓取失败都降级为告警（站点仍要出），不中断构建。
+// gh == nil（无 token / 本地降级）→ 返回空 Data 与 W1 告警。
+// 任何单帖抓取失败都降级为告警（站点仍要出），不中断构建。
 func (b *siteBuilder) fetchData(reg *registry.Registry) (pages.Data, []string) {
+	data := pages.Data{Discussions: map[string]pages.Thread{}}
 	if b.gh == nil {
-		return pages.Data{}, nil
+		if hasDiscussions(reg) {
+			return data, []string{"W1: 讨论数据未提供（降级渲染）"}
+		}
+		return data, nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	data := pages.Data{
-		IssueStats:         map[string]int{},
-		DiscussionComments: map[string][]pages.Comment{},
-	}
 	var warnings []string
-
-	var issueNodes []string
-	for _, s := range reg.Scripts {
-		if s.Issue != nil && s.Issue.NodeID != "" {
-			issueNodes = append(issueNodes, s.Issue.NodeID)
-		}
-	}
-	if len(issueNodes) > 0 {
-		stats, err := b.gh.IssueStats(ctx, issueNodes)
-		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("抓取 Issue 评论数失败: %v", err))
-		} else {
-			for _, st := range stats {
-				data.IssueStats[st.NodeID] = st.Comments
-			}
-		}
-	}
-
 	for _, s := range reg.Scripts {
 		for _, d := range s.Discussions {
 			if d.NodeID == "" {
@@ -104,11 +86,23 @@ func (b *siteBuilder) fetchData(reg *registry.Registry) (pages.Data, []string) {
 					CreatedAt: c.CreatedAt,
 				})
 			}
-			data.DiscussionComments[d.NodeID] = comments
+			data.Discussions[d.NodeID] = pages.Thread{
+				Comments:  comments,
+				HasAnswer: th.HasAnswer,
+			}
 		}
 	}
 
 	return data, warnings
+}
+
+func hasDiscussions(reg *registry.Registry) bool {
+	for _, s := range reg.Scripts {
+		if len(s.Discussions) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // 站点产物相对数据根的路径契约（PLAN.md C3-15、.gitignore 的部署清单）。

@@ -400,11 +400,3 @@ func TestDiscussionErrorBranches(t *testing.T) {
 		}
 	})
 }
-
-func TestIssueStatsRawError(t *testing.T) {
-	d := &fakeDoer{t: t, resps: []resp{{404, "x", nil}}}
-	c := newTestClient(t, d, WithRetry(0))
-	if _, err := c.IssueStats(context.Background(), []string{"I_1"}); err == nil || !strings.Contains(err.Error(), "IssueStats:") {
-		t.Fatalf("err = %v", err)
-	}
-}

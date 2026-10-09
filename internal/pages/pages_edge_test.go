@@ -51,9 +51,9 @@ func edgeOptions(out string, commandsPerPage int) Options {
 	}
 }
 
-// edgeData 非空 IssueStats 抑制 W1，便于精确断言告警内容。
+// edgeData 非空 Discussions 抑制 W1，便于精确断言告警内容。
 func edgeData() Data {
-	return Data{IssueStats: map[string]int{}}
+	return Data{Discussions: map[string]Thread{}}
 }
 
 func TestBuildSortsByIDWhenUpdatedAtEqual(t *testing.T) {

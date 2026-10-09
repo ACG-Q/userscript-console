@@ -59,8 +59,14 @@ func (o *Options) normalize() {
 
 // Data 是从 registry + Discussion 计算的辅助数据。
 type Data struct {
-	IssueStats         map[string]int       // nodeID -> comment count
-	DiscussionComments map[string][]Comment // nodeID -> comments
+	// Discussions nodeID -> 版本帖讨论数据；拉取失败或降级时为空。
+	Discussions map[string]Thread
+}
+
+// Thread 单个版本帖的讨论数据。
+type Thread struct {
+	Comments  []Comment
+	HasAnswer bool
 }
 
 // Comment 一条版本帖评论。
@@ -149,9 +155,9 @@ func Build(reg *registry.Registry, opts Options, data Data) (Outcome, error) {
 		out.Pages++
 	}
 
-	// 告警：IssueStats 未提供时降级渲染
-	if data.IssueStats == nil && len(reg.Scripts) > 0 {
-		out.BuildWarnings = append(out.BuildWarnings, "W1: IssueStats 未提供（降级渲染）")
+	// 告警：有脚本但讨论数据未提供时降级渲染
+	if data.Discussions == nil && len(reg.Scripts) > 0 {
+		out.BuildWarnings = append(out.BuildWarnings, "W1: 讨论数据未提供（降级渲染）")
 	}
 
 	return out, nil
@@ -315,8 +321,8 @@ func renderDetail(s registry.Script, opts Options, data Data) (string, error) {
 				URL:       dsc.URL,
 				CreatedAt: dsc.CreatedAt,
 			}
-			if cs, ok := data.DiscussionComments[dsc.NodeID]; ok {
-				for _, c := range cs {
+			if th, ok := data.Discussions[dsc.NodeID]; ok {
+				for _, c := range th.Comments {
 					item.Comments = append(item.Comments, Comment{
 						Author:    c.Author,
 						Body:      template.HTML(RenderMarkdown(clipText(string(c.Body), 400))),

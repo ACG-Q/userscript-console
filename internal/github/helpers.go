@@ -45,12 +45,6 @@ type Discussion struct {
 	CreatedAt  string
 }
 
-type Stats struct {
-	NodeID    string
-	Comments  int
-	CreatedAt string
-}
-
 // ── 解码结构（与真实 GitHub schema 字段一一对应） ─────────────
 
 type gqlIssue struct {
@@ -503,44 +497,4 @@ func (c *Client) fetchDiscussionNode(ctx context.Context, nodeID string, cursor 
 		pi = n.Comments.PageInfo
 	}
 	return &n, pi, nil
-}
-
-// ── 统计 ───────────────────────────────────────────────────
-
-// IssueStats 批量取评论数（BuildStatsQuery 模板）；null 节点跳过。
-func (c *Client) IssueStats(ctx context.Context, nodeIDs []string) ([]Stats, error) {
-	if len(nodeIDs) == 0 {
-		return nil, nil
-	}
-	query, err := BuildStatsQuery(len(nodeIDs))
-	if err != nil {
-		return nil, err
-	}
-	vars := make(map[string]any, len(nodeIDs))
-	for i, id := range nodeIDs {
-		vars["id"+fmt.Sprint(i)] = id
-	}
-	var data map[string]struct {
-		ID       string `json:"id"`
-		Comments *struct {
-			TotalCount int `json:"totalCount"`
-		} `json:"comments"`
-		CreatedAt string `json:"createdAt"`
-	}
-	if err := c.Raw(ctx, query, vars, &data); err != nil {
-		return nil, fmt.Errorf("IssueStats: %w", err)
-	}
-	out := make([]Stats, 0, len(nodeIDs))
-	for i := range nodeIDs {
-		node, ok := data["i"+fmt.Sprint(i)]
-		if !ok || node.ID == "" {
-			continue // null 节点跳过
-		}
-		st := Stats{NodeID: node.ID, CreatedAt: node.CreatedAt}
-		if node.Comments != nil {
-			st.Comments = node.Comments.TotalCount
-		}
-		out = append(out, st)
-	}
-	return out, nil
 }

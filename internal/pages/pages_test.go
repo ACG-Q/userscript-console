@@ -113,9 +113,8 @@ func TestBuildBasic(t *testing.T) {
 		PagesBase: "https://test.github.io/repo",
 	}
 	data := Data{
-		IssueStats: map[string]int{"I_test1": 5},
-		DiscussionComments: map[string][]Comment{
-			"D_test1": {{Author: "User1", Body: "好脚本！", CreatedAt: "2026-10-05"}},
+		Discussions: map[string]Thread{
+			"D_test1": {Comments: []Comment{{Author: "User1", Body: "好脚本！", CreatedAt: "2026-10-05"}}},
 		},
 	}
 	out, err := Build(reg, opts, data)
@@ -163,8 +162,8 @@ func TestDetailPageContent(t *testing.T) {
 	reg := buildTestRegistry(t)
 	opts := Options{Out: t.TempDir(), PagesBase: "https://test.github.io/repo"}
 	data := Data{
-		DiscussionComments: map[string][]Comment{
-			"D_test1": {{Author: "User1", Body: "好脚本！", CreatedAt: "2026-10-05"}},
+		Discussions: map[string]Thread{
+			"D_test1": {Comments: []Comment{{Author: "User1", Body: "好脚本！", CreatedAt: "2026-10-05"}}},
 		},
 	}
 	out, err := Build(reg, opts, data)
@@ -183,13 +182,13 @@ func TestDetailPageContent(t *testing.T) {
 func TestBuildWarnings(t *testing.T) {
 	reg := buildTestRegistry(t)
 	opts := Options{Out: t.TempDir(), PagesBase: "https://test.github.io/repo"}
-	// 不提供 IssueStats → 应产生 W1 警告
+	// 不提供 Discussions → 应产生 W1 警告
 	out, err := Build(reg, opts, Data{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(out.BuildWarnings) == 0 {
-		t.Error("缺少 IssueStats 应产生 W1 警告")
+		t.Error("缺少 Discussions 应产生 W1 警告")
 	}
 }
 
@@ -310,7 +309,7 @@ func TestBuildCommandPages(t *testing.T) {
 	_ = out.CommandsIndex
 }
 
-func TestBuildWithIssueStats(t *testing.T) {
+func TestBuildWithDiscussions(t *testing.T) {
 	reg := buildTestRegistry(t)
 	opts := Options{
 		Out:       t.TempDir(),
@@ -318,16 +317,16 @@ func TestBuildWithIssueStats(t *testing.T) {
 		PagesBase: "https://test.github.io/repo",
 	}
 	data := Data{
-		IssueStats: map[string]int{"I_test1": 10},
+		Discussions: map[string]Thread{},
 	}
 	out, err := Build(reg, opts, data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 有 IssueStats 时不应有 W1 警告
+	// 有 Discussions 时不应有 W1 警告
 	for _, w := range out.BuildWarnings {
 		if strings.Contains(w, "W1") {
-			t.Error("有 IssueStats 时不应产生 W1 警告")
+			t.Error("有 Discussions 时不应产生 W1 警告")
 		}
 	}
 }
@@ -536,7 +535,7 @@ func TestBuildLinksAreRelative(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := Build(reg, opts, Data{IssueStats: map[string]int{}})
+	out, err := Build(reg, opts, Data{Discussions: map[string]Thread{}})
 	if err != nil {
 		t.Fatalf("Build 失败: %v", err)
 	}
@@ -596,8 +595,8 @@ func TestCommentBodySinglePassAndClipped(t *testing.T) {
 	reg := buildTestRegistry(t)
 	opts := Options{Out: t.TempDir(), PagesBase: "https://test.github.io/repo"}
 	data := Data{
-		DiscussionComments: map[string][]Comment{
-			"D_test1": {{Author: "User1", Body: "x <b>y</b>", CreatedAt: "2026-10-05"}},
+		Discussions: map[string]Thread{
+			"D_test1": {Comments: []Comment{{Author: "User1", Body: "x <b>y</b>", CreatedAt: "2026-10-05"}}},
 		},
 	}
 	out, err := Build(reg, opts, data)
@@ -618,8 +617,8 @@ func TestCommentBodySinglePassAndClipped(t *testing.T) {
 	// 超 400 字正文须截断并以省略号结尾
 	long := strings.Repeat("a", 500)
 	data = Data{
-		DiscussionComments: map[string][]Comment{
-			"D_test1": {{Author: "User1", Body: template.HTML(long), CreatedAt: "2026-10-05"}},
+		Discussions: map[string]Thread{
+			"D_test1": {Comments: []Comment{{Author: "User1", Body: template.HTML(long), CreatedAt: "2026-10-05"}}},
 		},
 	}
 	out, err = Build(reg, opts, data)

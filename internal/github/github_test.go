@@ -329,27 +329,6 @@ func Test讨论节点查询必须走node入口(t *testing.T) {
 	}
 }
 
-func TestBuildStatsQuery结构与非法n(t *testing.T) {
-	q, err := BuildStatsQuery(3)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, alias := range []string{"i0:", "i1:", "i2:"} {
-		if !strings.Contains(q, alias) {
-			t.Errorf("缺别名 %s", alias)
-		}
-	}
-	if strings.Count(q, "node(id: $id") != 3 {
-		t.Errorf("node 数量错误:\n%s", q)
-	}
-	if !strings.Contains(q, "... on Issue") || !strings.Contains(q, "... on Discussion") {
-		t.Error("缺类型片段")
-	}
-	if _, err := BuildStatsQuery(0); err == nil {
-		t.Error("n=0 应报错")
-	}
-}
-
 // ── typed helpers ───────────────────────────────────────────
 
 func TestGetIssue解码与null(t *testing.T) {
@@ -636,27 +615,6 @@ func TestDiscussion系列(t *testing.T) {
 			t.Errorf("cursor: %#v", d.recs[1].Vars)
 		}
 	})
-}
-
-func TestIssueStats解码与跳过null(t *testing.T) {
-	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{
-		"i0": map[string]any{"id": "I_1", "comments": map[string]any{"totalCount": 7}, "createdAt": "c1"},
-		"i1": nil,
-	}), nil}}}
-	c := newTestClient(t, d)
-	stats, err := c.IssueStats(context.Background(), []string{"I_1", "GONE"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(stats) != 1 || stats[0].Comments != 7 {
-		t.Errorf("stats = %+v", stats)
-	}
-	if d.recs[0].Vars["id0"] != "I_1" || d.recs[0].Vars["id1"] != "GONE" {
-		t.Errorf("variables: %#v", d.recs[0].Vars)
-	}
-	if empty, err := c.IssueStats(context.Background(), nil); err != nil || empty != nil {
-		t.Errorf("空输入应 nil, %v %v", empty, err)
-	}
 }
 
 // ── WithEndpoint ──────────────────────────────────────────────

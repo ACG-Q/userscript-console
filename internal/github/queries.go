@@ -1,13 +1,6 @@
 package github
 
-import (
-	"fmt"
-	"strconv"
-	"strings"
-)
-
-// 13 个固定 GraphQL 查询文档（D-05：固定文档走常量 + 字段回归锁测试；
-// 动态批量统计走 BuildStatsQuery 模板，不 codegen）。
+// 13 个固定 GraphQL 查询文档（D-05：固定文档走常量 + 字段回归锁测试）。
 // 每个常量上方注释其消费者。
 //
 // ⚠️ 外部事实备注：DELETE_COMMENT_MUTATION 的根字段经真实 schema 校验
@@ -135,7 +128,7 @@ mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) 
   }
 }`
 
-	// DISCUSSION_NODE_QUERY —— DiscussionByNode（cursor=null）与 DiscussionComments（分页）共用。
+	// DISCUSSION_NODE_QUERY —— DiscussionByNode（cursor=null）与 DiscThread（分页）共用。
 	// ⚠️ 回归锁（SPEC-ARCH-TEST §3.1）：必须是 node(id:) 入口，绝不允许 discussion(id:)。
 	DISCUSSION_NODE_QUERY = `
 query($id: ID!, $cursor: String) {
@@ -179,22 +172,3 @@ mutation($commentId: ID!) {
   }
 }`
 )
-
-// BuildStatsQuery 动态别名模板（D-05 保留模板）：
-// 生成 n 个唯一别名 i0..i(n-1) 的 node(id:) 查询，Issue/Discussion 双片段取评论数与创建时间。
-func BuildStatsQuery(n int) (string, error) {
-	if n < 1 {
-		return "", fmt.Errorf("BuildStatsQuery: n 必须 ≥1，实际 %d", n)
-	}
-	vars := make([]string, 0, n)
-	var body strings.Builder
-	for i := 0; i < n; i++ {
-		id := strconv.Itoa(i)
-		vars = append(vars, "$id"+id)
-		body.WriteString("  i" + id + ": node(id: $id" + id + ") {\n" +
-			"    ... on Issue { id comments { totalCount } createdAt }\n" +
-			"    ... on Discussion { id comments { totalCount } createdAt }\n" +
-			"  }\n")
-	}
-	return "query(" + strings.Join(vars, ", ") + ") {\n" + body.String() + "}", nil
-}

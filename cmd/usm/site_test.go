@@ -17,22 +17,15 @@ import (
 
 // fakeGH 注入 siteGH：不发网络请求即可覆盖 fetchData 的成功/降级分支。
 type fakeGH struct {
-	stats       []github.Stats
-	statsErr    error
-	comments    map[string][]github.Comment
-	commentsErr map[string]error
-	answers     map[string]bool
-}
-
-func (f *fakeGH) IssueStats(context.Context, []string) ([]github.Stats, error) {
-	return f.stats, f.statsErr
+	threads map[string]github.Thread
+	errs    map[string]error
 }
 
 func (f *fakeGH) DiscThread(_ context.Context, nodeID string) (github.Thread, error) {
-	if err := f.commentsErr[nodeID]; err != nil {
+	if err, ok := f.errs[nodeID]; ok {
 		return github.Thread{}, err
 	}
-	return github.Thread{Comments: f.comments[nodeID], HasAnswer: f.answers[nodeID]}, nil
+	return f.threads[nodeID], nil
 }
 
 // siteTestRegistry 带 Issue 与版本帖账本的语料（含一个空 NodeID 的条目）。
@@ -59,45 +52,47 @@ func siteTestRegistry() *registry.Registry {
 	}
 }
 
-// TestSiteFetchDataWithGH 抓取成功：Issue 评论数与版本帖评论进 pages.Data，
+// TestSiteFetchDataWithGH 抓取成功：版本帖评论与 answer 标记进 pages.Data，
 // 抓取失败的版本帖降级为告警、不中断。
 func TestSiteFetchDataWithGH(t *testing.T) {
 	b := &siteBuilder{gh: &fakeGH{
-		stats: []github.Stats{{NodeID: "ISSUE_NODE", Comments: 3}},
-		comments: map[string][]github.Comment{
-			"DSC_OK": {{Author: "alice", Body: "发布说明", CreatedAt: "2026-01-01T00:00:00Z"}},
+		threads: map[string]github.Thread{
+			"DSC_OK": {
+				Comments:  []github.Comment{{Author: "alice", Body: "发布说明", CreatedAt: "2026-01-01T00:00:00Z"}},
+				HasAnswer: true,
+			},
 		},
-		commentsErr: map[string]error{"DSC_ERR": errors.New("GraphQL 失败")},
+		errs: map[string]error{"DSC_ERR": errors.New("GraphQL 失败")},
 	}}
 
 	data, warnings := b.fetchData(siteTestRegistry())
 
-	if data.IssueStats["ISSUE_NODE"] != 3 {
-		t.Errorf("IssueStats 应为 3, got %v", data.IssueStats)
+	th := data.Discussions["DSC_OK"]
+	if len(th.Comments) != 1 || th.Comments[0].Author != "alice" {
+		t.Errorf("版本帖评论应落进 Data, got %+v", th)
 	}
-	cs := data.DiscussionComments["DSC_OK"]
-	if len(cs) != 1 || cs[0].Author != "alice" {
-		t.Errorf("版本帖评论应落进 Data, got %+v", cs)
+	if !th.HasAnswer {
+		t.Error("HasAnswer 应透传进 Data")
 	}
 	if len(warnings) != 1 || !strings.Contains(warnings[0], "DSC_ERR") {
 		t.Errorf("抓取失败应降级为告警, got %v", warnings)
 	}
-	if _, ok := data.DiscussionComments["DSC_ERR"]; ok {
-		t.Error("失败的版本帖不应写入评论数据")
+	if _, ok := data.Discussions["DSC_ERR"]; ok {
+		t.Error("失败的版本帖不应写入数据")
 	}
 }
 
-// TestSiteFetchDataStatsError Issue 评论数抓取失败 → 命名告警 + 空统计。
-func TestSiteFetchDataStatsError(t *testing.T) {
-	b := &siteBuilder{gh: &fakeGH{statsErr: errors.New("配额耗尽")}}
+// TestSiteFetchDataDegraded gh=nil + 注册表含版本帖 → W1 告警 + 空数据。
+func TestSiteFetchDataDegraded(t *testing.T) {
+	b := &siteBuilder{}
 
 	data, warnings := b.fetchData(siteTestRegistry())
 
-	if len(warnings) != 1 || !strings.Contains(warnings[0], "抓取 Issue 评论数失败") {
-		t.Errorf("应产生 Issue 抓取告警, got %v", warnings)
+	if len(warnings) != 1 || warnings[0] != "W1: 讨论数据未提供（降级渲染）" {
+		t.Errorf("应产生降级告警, got %v", warnings)
 	}
-	if len(data.IssueStats) != 0 {
-		t.Errorf("抓取失败时统计应为空, got %v", data.IssueStats)
+	if len(data.Discussions) != 0 {
+		t.Errorf("降级时数据应为空, got %v", data.Discussions)
 	}
 }
 
@@ -109,8 +104,7 @@ func TestSiteBuilderBuildWithGH(t *testing.T) {
 		pagesBase: "https://test.github.io/repo",
 		now:       time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC),
 		gh: &fakeGH{
-			stats:    []github.Stats{{NodeID: "ISSUE_NODE", Comments: 3}},
-			comments: map[string][]github.Comment{"DSC_OK": {}},
+			threads: map[string]github.Thread{"DSC_OK": {}},
 		},
 	}
 
@@ -139,7 +133,7 @@ func siteOutcome() pages.Outcome {
 		DetailHTMLs:   map[string]string{"abc": "<html>detail</html>"},
 		CommandPages:  map[int]string{1: "<html>cmd</html>"},
 		CommandsIndex: "<html>cmds</html>",
-		BuildWarnings: []string{"W1: IssueStats 未提供（降级渲染）"},
+		BuildWarnings: []string{"W1: 讨论数据未提供（降级渲染）"},
 	}
 }
 
