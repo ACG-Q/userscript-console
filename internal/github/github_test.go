@@ -628,9 +628,9 @@ func TestDiscussion系列(t *testing.T) {
 			{200, okBody(t, page(false, "")), nil},
 		}}
 		c := newTestClient(t, d)
-		comments, err := c.DiscussionComments(context.Background(), "D_1")
-		if err != nil || len(comments) != 2 {
-			t.Fatalf("comments=%v err=%v", comments, err)
+		th, err := c.DiscThread(context.Background(), "D_1")
+		if err != nil || len(th.Comments) != 2 {
+			t.Fatalf("comments=%v err=%v", th.Comments, err)
 		}
 		if d.recs[1].Vars["cursor"] != "K1" {
 			t.Errorf("cursor: %#v", d.recs[1].Vars)
@@ -732,7 +732,7 @@ func TestGetIssueNullReturn(t *testing.T) {
 	}
 }
 
-func TestDiscussionCommentsEndCursorEmpty(t *testing.T) {
+func TestDiscThreadEndCursorEmpty(t *testing.T) {
 	node := map[string]any{
 		"id": "D_1",
 		"comments": map[string]any{
@@ -742,8 +742,8 @@ func TestDiscussionCommentsEndCursorEmpty(t *testing.T) {
 	}
 	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{"node": node}), nil}}}
 	c := newTestClient(t, d)
-	if _, err := c.DiscussionComments(context.Background(), "D_1"); err == nil {
-		t.Fatal("DiscussionComments endCursor 空应报错")
+	if _, err := c.DiscThread(context.Background(), "D_1"); err == nil {
+		t.Fatal("DiscThread endCursor 空应报错")
 	}
 }
 
@@ -861,5 +861,52 @@ func TestListIssueCommentsSuccess(t *testing.T) {
 	}
 	if len(comments) != 1 || comments[0].Author != "alice" {
 		t.Errorf("结果不符: %+v", comments)
+	}
+}
+
+func TestDiscThreadParsesAnswer(t *testing.T) {
+	node := map[string]any{
+		"__typename": "Discussion", "id": "D_1", "number": 1, "title": "t",
+		"body": "b", "url": "https://x/1", "createdAt": "2026-01-01T00:00:00Z",
+		"category": map[string]any{"id": "C1", "name": "n", "slug": "s"},
+		"answer":   map[string]any{"id": "A1"},
+		"comments": map[string]any{
+			"pageInfo": map[string]any{"hasNextPage": false, "endCursor": ""},
+			"nodes":    []any{map[string]any{"id": "CM1", "author": map[string]any{"login": "u"}, "body": "hi", "createdAt": "2026-01-02T00:00:00Z"}},
+		},
+	}
+	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{"node": node}), nil}}}
+	c := newTestClient(t, d)
+	th, err := c.DiscThread(context.Background(), "D_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !th.HasAnswer {
+		t.Error("answer 存在时 HasAnswer 应为 true")
+	}
+	if len(th.Comments) != 1 || th.Comments[0].Author != "u" {
+		t.Errorf("评论解析错误: %+v", th.Comments)
+	}
+}
+
+func TestDiscThreadNoAnswer(t *testing.T) {
+	node := map[string]any{
+		"__typename": "Discussion", "id": "D_1", "number": 1, "title": "t",
+		"body": "b", "url": "https://x/1", "createdAt": "2026-01-01T00:00:00Z",
+		"category": map[string]any{"id": "C1", "name": "n", "slug": "s"},
+		"answer":   nil,
+		"comments": map[string]any{
+			"pageInfo": map[string]any{"hasNextPage": false, "endCursor": ""},
+			"nodes":    []any{},
+		},
+	}
+	d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{"node": node}), nil}}}
+	c := newTestClient(t, d)
+	th, err := c.DiscThread(context.Background(), "D_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if th.HasAnswer {
+		t.Error("answer=null 时 HasAnswer 应为 false")
 	}
 }

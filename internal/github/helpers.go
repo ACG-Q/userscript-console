@@ -414,6 +414,9 @@ type gqlDiscussionNode struct {
 		Name string `json:"name"`
 		Slug string `json:"slug"`
 	} `json:"category"`
+	Answer *struct {
+		ID string `json:"id"`
+	} `json:"answer"`
 	Comments *struct {
 		PageInfo gqlPageInfo  `json:"pageInfo"`
 		Nodes    []gqlComment `json:"nodes"`
@@ -436,33 +439,43 @@ func (c *Client) DiscussionByNode(ctx context.Context, nodeID string) (*Discussi
 	return d, nil
 }
 
-// DiscussionComments 分页拉取版本帖评论（复用同一查询文档）。
-func (c *Client) DiscussionComments(ctx context.Context, nodeID string) ([]Comment, error) {
+// Thread 单个版本帖（Discussion）的讨论数据：全部评论 + 是否有最佳答案。
+type Thread struct {
+	Comments  []Comment
+	HasAnswer bool
+}
+
+// DiscThread 分页拉取版本帖评论与最佳答案标记（复用同一查询文档）。
+func (c *Client) DiscThread(ctx context.Context, nodeID string) (Thread, error) {
 	var all []Comment
 	cursor := any(nil)
+	hasAnswer := false
 	for page := 0; page < 50; page++ {
 		n, pi, err := c.fetchDiscussionNode(ctx, nodeID, cursor)
 		if err != nil {
-			return nil, fmt.Errorf("DiscussionComments: %w", err)
+			return Thread{}, fmt.Errorf("DiscThread: %w", err)
+		}
+		if n.Answer != nil {
+			hasAnswer = true
 		}
 		if n.Comments != nil {
 			for _, cn := range n.Comments.Nodes {
 				cm, err := cn.toComment()
 				if err != nil {
-					return nil, err
+					return Thread{}, err
 				}
 				all = append(all, cm)
 			}
 		}
 		if !pi.HasNextPage {
-			return all, nil
+			return Thread{Comments: all, HasAnswer: hasAnswer}, nil
 		}
 		if pi.EndCursor == "" {
-			return nil, errors.New("DiscussionComments: hasNextPage=true 但 endCursor 为空")
+			return Thread{}, errors.New("DiscThread: hasNextPage=true 但 endCursor 为空")
 		}
 		cursor = pi.EndCursor
 	}
-	return nil, errors.New("DiscussionComments: 超过 50 页上限")
+	return Thread{}, errors.New("DiscThread: 超过 50 页上限")
 }
 
 func (c *Client) fetchDiscussionNode(ctx context.Context, nodeID string, cursor any) (*gqlDiscussionNode, gqlPageInfo, error) {

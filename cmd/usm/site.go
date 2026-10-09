@@ -23,7 +23,7 @@ import (
 // （*github.Client 天然满足），同时避免把 nil 指针塞进接口导致判空失效。
 type siteGH interface {
 	IssueStats(ctx context.Context, nodeIDs []string) ([]github.Stats, error)
-	DiscussionComments(ctx context.Context, nodeID string) ([]github.Comment, error)
+	DiscThread(ctx context.Context, nodeID string) (github.Thread, error)
 }
 
 type siteBuilder struct {
@@ -91,13 +91,13 @@ func (b *siteBuilder) fetchData(reg *registry.Registry) (pages.Data, []string) {
 			if d.NodeID == "" {
 				continue
 			}
-			cs, err := b.gh.DiscussionComments(ctx, d.NodeID)
+			th, err := b.gh.DiscThread(ctx, d.NodeID)
 			if err != nil {
 				warnings = append(warnings, fmt.Sprintf("抓取版本帖 %s 的评论失败: %v", d.NodeID, err))
 				continue
 			}
-			comments := make([]pages.Comment, 0, len(cs))
-			for _, c := range cs {
+			comments := make([]pages.Comment, 0, len(th.Comments))
+			for _, c := range th.Comments {
 				comments = append(comments, pages.Comment{
 					Author:    c.Author,
 					Body:      template.HTML(c.Body),

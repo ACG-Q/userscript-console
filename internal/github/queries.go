@@ -149,6 +149,7 @@ query($id: ID!, $cursor: String) {
       url
       createdAt
       category { id name slug }
+      answer { id }
       comments(first: 100, after: $cursor) {
         pageInfo { hasNextPage endCursor }
         nodes { id author { login } body createdAt }

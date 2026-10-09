@@ -1,7 +1,7 @@
 # 站点 UI 仿照 projec-02 重设计（设计文档）
 
 日期：2026-10-08
-状态：已获用户批准（四节逐节确认）
+状态：已获用户批准（四节逐节确认 + 数据源清单逐项确认，§2 依确认订正为 Discussions 数据源）
 范围仓：userscript-console（主）+ userscripts（发版升钉）
 
 ## 背景与目标
@@ -24,6 +24,7 @@
 | `detail.tmpl` | `.frame` > `nav` > `main`（`detail-card`：标题+版本 pills+元信息 → `d-doc` Markdown 正文 → `d-disc` 评论折叠区 → 版本表格）> `foot` |
 | `commands.tmpl` | `.frame` > `nav` > `main`（归档组列表 + 分页器，新卡片样式）> `foot` |
 | `commands-index.tmpl` | **不动**（projec-02 同为 meta-refresh 跳转页，批次 2 已对齐） |
+| `docs.tmpl`（新增） | **文档站内页**：构建时把 `docs/` **仅顶层** `*.md` 逐个转 HTML（`docs/index.md` → `site/docs/index.html`，`SPEC-DATA-MODEL.md` → `site/docs/spec-data-model.html`，kebab 命名），shell-only（无 extra_js），页面内列全部文档目录；导航「文档」链接指向 `docs/index.html`（按页面深度推 `../` 前缀） |
 | `assets.tmpl`（新增） | `{{define}}` 资产：`token-css`、`component-css`、`filter-js`、`list-js`、`disc-js`，外加 `page-shell`（统一外壳：`data-theme="github-light"` 默认值、防闪烁主题 bootstrap 脚本、`nav`、`foot`、归档链接按 `root_href` 推导前缀——对应 Python `page()`，3646B） |
 
 - 资产逐字取自 `pages_assets.py` 常量（TOKEN_CSS 2208B / COMPONENT_CSS 21671B / FILTER_JS 638B / LIST_JS 3461B / DISC_JS 4010B）与 `build_pages.py` 的 `page()` 外壳及主题初始化段，不重写、不"顺手优化"。

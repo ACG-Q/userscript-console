@@ -355,14 +355,14 @@ func TestDiscussionErrorBranches(t *testing.T) {
 	t.Run("评论查询网络错误包装", func(t *testing.T) {
 		d := &fakeDoer{t: t, resps: []resp{{404, "x", nil}}}
 		c := newTestClient(t, d, WithRetry(0))
-		if _, err := c.DiscussionComments(context.Background(), "D_1"); err == nil || !strings.Contains(err.Error(), "DiscussionComments:") {
+		if _, err := c.DiscThread(context.Background(), "D_1"); err == nil || !strings.Contains(err.Error(), "DiscThread:") {
 			t.Fatalf("err = %v", err)
 		}
 	})
 	t.Run("node非对象解码报错", func(t *testing.T) {
 		d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{"node": "not-an-object"}), nil}}}
 		c := newTestClient(t, d)
-		if _, err := c.DiscussionComments(context.Background(), "D_1"); err == nil {
+		if _, err := c.DiscThread(context.Background(), "D_1"); err == nil {
 			t.Fatal("node 非对象应解码报错")
 		}
 	})
@@ -371,7 +371,7 @@ func TestDiscussionErrorBranches(t *testing.T) {
 			"pageInfo": map[string]any{"hasNextPage": false}, "nodes": []any{},
 		}}}), nil}}}
 		c := newTestClient(t, d)
-		if _, err := c.DiscussionComments(context.Background(), "D_1"); err == nil || !strings.Contains(err.Error(), "缺 id") {
+		if _, err := c.DiscThread(context.Background(), "D_1"); err == nil || !strings.Contains(err.Error(), "缺 id") {
 			t.Fatalf("err = %v", err)
 		}
 	})
@@ -383,7 +383,7 @@ func TestDiscussionErrorBranches(t *testing.T) {
 			},
 		}}), nil}}}
 		c := newTestClient(t, d)
-		if _, err := c.DiscussionComments(context.Background(), "D_1"); err == nil || !strings.Contains(err.Error(), "缺 id") {
+		if _, err := c.DiscThread(context.Background(), "D_1"); err == nil || !strings.Contains(err.Error(), "缺 id") {
 			t.Fatalf("err = %v", err)
 		}
 	})
@@ -395,7 +395,7 @@ func TestDiscussionErrorBranches(t *testing.T) {
 			},
 		}}), nil}}}
 		c := newTestClient(t, d)
-		if _, err := c.DiscussionComments(context.Background(), "D_1"); err == nil || !strings.Contains(err.Error(), "超过 50 页") {
+		if _, err := c.DiscThread(context.Background(), "D_1"); err == nil || !strings.Contains(err.Error(), "超过 50 页") {
 			t.Fatalf("err = %v", err)
 		}
 	})

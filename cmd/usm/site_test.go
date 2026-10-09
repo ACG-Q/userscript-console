@@ -21,17 +21,18 @@ type fakeGH struct {
 	statsErr    error
 	comments    map[string][]github.Comment
 	commentsErr map[string]error
+	answers     map[string]bool
 }
 
 func (f *fakeGH) IssueStats(context.Context, []string) ([]github.Stats, error) {
 	return f.stats, f.statsErr
 }
 
-func (f *fakeGH) DiscussionComments(_ context.Context, nodeID string) ([]github.Comment, error) {
+func (f *fakeGH) DiscThread(_ context.Context, nodeID string) (github.Thread, error) {
 	if err := f.commentsErr[nodeID]; err != nil {
-		return nil, err
+		return github.Thread{}, err
 	}
-	return f.comments[nodeID], nil
+	return github.Thread{Comments: f.comments[nodeID], HasAnswer: f.answers[nodeID]}, nil
 }
 
 // siteTestRegistry 带 Issue 与版本帖账本的语料（含一个空 NodeID 的条目）。
