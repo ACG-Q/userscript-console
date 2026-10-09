@@ -124,7 +124,7 @@ const (
 )
 
 // validDocName 文档输出键契约：<slug>.html 或恰好一级 <subdir>/<slug>.html
-//（子目录白名单 [a-z0-9-]+）；拒绝 ..、\、绝对路径、更深层级。
+// （子目录白名单 [a-z0-9-]+）；拒绝 ..、\、绝对路径、更深层级。
 func validDocName(name string) bool {
 	if name == "" || strings.Contains(name, `\`) || strings.Contains(name, "..") || strings.HasPrefix(name, "/") {
 		return false

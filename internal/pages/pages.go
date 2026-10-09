@@ -900,7 +900,7 @@ func (p docPage) outName() string {
 type docPages []docPage
 
 // tocFrom 从当前页视角生成目录链接：同目录裸 slug、跨目录带前缀
-//（仅两级："" 与 commands/）。
+// （仅两级："" 与 commands/）。
 func (ps docPages) tocFrom(cur docPage) []docTOCEntry {
 	toc := make([]docTOCEntry, 0, len(ps))
 	for _, p := range ps {
