@@ -77,6 +77,9 @@ func TestActionContractInterfaceFrozen(t *testing.T) {
 		"repo-owner", "issue-number", "registry-schema-version",
 		"keep", "apply", "version", "use-binary",
 		"binary-version", "binary-sha256",
+		// 路径 4 + 门禁/回帖/搬移 3（设计 D6/D7）
+		"registry-path", "scripts-dir", "dist-dir", "archive-path",
+		"comment-id", "post-reply", "pages-out",
 	}
 	for _, name := range requiredInputs {
 		if _, ok := doc.Inputs[name]; !ok {
@@ -103,6 +106,54 @@ func TestActionContractInterfaceFrozen(t *testing.T) {
 		t.Error("Run 步骤 env 缺少 USM_VERSION")
 	} else if !strings.Contains(got, "github.action_ref") {
 		t.Errorf("USM_VERSION 应取自 github.action_ref, 实际 %q", got)
+	}
+}
+
+// TestActionNewInputsEnvPassthrough 七个新 inputs 必须经 env 透传（防注入）：
+// 用户可控的路径/评论 id 绝不内插进 shell 命令行（SPEC-ACTION §4.2 同一理由），
+// 由 usm 侧经 flag > env > 默认链读取（SPEC-CLI §0.4/§0.5）。
+func TestActionNewInputsEnvPassthrough(t *testing.T) {
+	doc, _ := loadActionYAML(t)
+
+	var runEnv map[string]string
+	var runBody string
+	for _, s := range doc.Runs.Steps {
+		if s.Name == "Run" {
+			runEnv = s.Env
+			runBody = s.Run
+		}
+	}
+	if runEnv == nil {
+		t.Fatal("找不到 Run 步骤 env")
+	}
+
+	wantEnv := map[string]string{
+		"USM_REGISTRY":     "inputs.registry-path",
+		"USM_SCRIPTS_DIR":  "inputs.scripts-dir",
+		"USM_DIST_DIR":     "inputs.dist-dir",
+		"USM_ARCHIVE_PATH": "inputs.archive-path",
+		"COMMENT_ID":       "inputs.comment-id",
+		"POST_REPLY":       "inputs.post-reply",
+		"USM_PAGES_OUT":    "inputs.pages-out",
+	}
+	for key, src := range wantEnv {
+		got, ok := runEnv[key]
+		if !ok {
+			t.Errorf("Run 步骤 env 缺少 %s", key)
+			continue
+		}
+		if !strings.Contains(got, src) {
+			t.Errorf("env %s 应取自 %s, 实际 %q", key, src, got)
+		}
+	}
+
+	for _, flag := range []string{
+		"--registry", "--scripts-dir", "--dist-dir", "--archive-path",
+		"--comment-id", "--post-reply", "--pages-out",
+	} {
+		if strings.Contains(runBody, flag) {
+			t.Errorf("Run 脚本不得把 %s 拼进命令行（应经 env 透传）", flag)
+		}
 	}
 }
 

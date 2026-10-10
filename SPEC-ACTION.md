@@ -19,12 +19,24 @@
 | `repo-owner` | | `${{ github.repository_owner }}` | 门禁比较对象 |
 | `issue-number` | | `'1'` | 仅 `run-command` |
 | `registry-schema-version` | | `'1'` | 不匹配 → 失败（跨仓 schema 防漂移） |
+| `registry-path` | | `''` | 注册表文件路径（相对数据根或绝对）；env `USM_REGISTRY` 透传 |
+| `scripts-dir` | | `''` | 脚本目录；env `USM_SCRIPTS_DIR` 透传 |
+| `dist-dir` | | `''` | 分发/站点产物目录；env `USM_DIST_DIR` 透传（`@downloadURL` 跟随） |
+| `archive-path` | | `''` | 命令归档文件路径；env `USM_ARCHIVE_PATH` 透传 |
+| `comment-id` | | `''` | 仅 `run-command`；门禁未授权时要删除的评论数字 ID（env `COMMENT_ID`） |
+| `post-reply` | | `'true'` | 仅 `run-command`；执行结果是否回帖到 Issue（env `POST_REPLY`） |
+| `pages-out` | | `''` | 仅 `build`；构建后把站点产物搬入该目录（env `USM_PAGES_OUT`）；空=不搬移 |
 | `keep` | | `'10'` | 仅 `cleanup`，保留的命令组数 |
 | `apply` | | `'false'` | 仅 `cleanup`；**必须显式 `true` 才真正删除**（默认 dry-run） |
 | `version` | | `''` | 二进制版本别名（等价 `binary-version`，兼容早期调用方） |
 | `use-binary` | | `'false'` | `true`=二进制模式（缺省自动推导版本+校验和）；`false`=源码模式（默认） |
 | `binary-version` | | `''` | 二进制版本号（不含 v）。缺省时从 ACTION_REF 推导：精确 `vX.Y.Z` tag 直接用；大版本 `vN` 取最新 `vN.x` release。显式传值可覆盖。 |
 | `binary-sha256` | | `''` | 二进制 sha256（64 位十六进制）。缺省时从同 release 的 `checksums.txt` 自动取 `usm-linux-amd64` 校验和。显式传值可收紧。 |
+
+> **env 透传与防注入**：上表 7 个新 input（路径 4 + `comment-id`/`post-reply`/`pages-out`）
+> 一律只经 `env` 进入 usm（`USM_REGISTRY`/`USM_SCRIPTS_DIR`/`USM_DIST_DIR`/`USM_ARCHIVE_PATH`/
+> `COMMENT_ID`/`POST_REPLY`/`USM_PAGES_OUT`），**绝不内插进 shell 命令行**
+> （SPEC-ACTION §4.2 同一理由）；usm 侧按 flag > env > 默认 解析（SPEC-CLI §0.4/§0.5）。
 
 ### 1.2 Outputs
 
@@ -34,6 +46,7 @@
 | `changed` | `'true'`/`'false'` | 本次是否改动了数据文件（决定调用方要不要 commit） |
 | `result` | string | 回帖正文（人类可读，多行） |
 | `warnings` | string | `build` 的 `build-warnings.txt` 内容（单行化，`%0A` 分隔） |
+| `version` | string | usm 版本（二进制模式为二进制自报；源码模式经 `USM_VERSION=action_ref` 解析，非语义化 ref 回落仓库 `VERSION` 文件） |
 
 ---
 

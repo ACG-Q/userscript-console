@@ -45,6 +45,27 @@ inputs:
   registry-schema-version:
     description: '跨仓 schema 防漂移；不匹配 → 失败'
     default: '1'
+  registry-path:
+    description: '注册表文件路径（相对数据根或绝对）。经 env 透传，不进命令行'
+    default: ''
+  scripts-dir:
+    description: '脚本目录（相对数据根或绝对）。经 env 透传，不进命令行'
+    default: ''
+  dist-dir:
+    description: '分发/站点产物目录（相对数据根或绝对）。经 env 透传，不进命令行'
+    default: ''
+  archive-path:
+    description: '命令归档文件路径（相对数据根或绝对）。经 env 透传，不进命令行'
+    default: ''
+  comment-id:
+    description: '仅 run-command：门禁未授权时要删除的评论数字 ID（经 env COMMENT_ID 透传）'
+    default: ''
+  post-reply:
+    description: '仅 run-command：执行结果是否回帖到 Issue（true/false，经 env POST_REPLY 透传）'
+    default: 'true'
+  pages-out:
+    description: '仅 build：构建后把站点产物搬入该目录（经 env USM_PAGES_OUT 透传）；空=不搬移'
+    default: ''
   keep:
     description: '仅 cleanup：保留命令组数'
     default: '10'
@@ -190,6 +211,17 @@ runs:
         USM_KEEP: ${{ inputs.keep }}
         USM_APPLY: ${{ inputs.apply }}
         USM_ROOT: ${{ github.workspace }}
+        # 数据布局四路径（SPEC-CLI §0.5）：只经 env 透传——绝不内插进
+        # shell 命令行，防命令注入（SPEC-ACTION §4.2 同一理由）。
+        USM_REGISTRY: ${{ inputs.registry-path }}
+        USM_SCRIPTS_DIR: ${{ inputs.scripts-dir }}
+        USM_DIST_DIR: ${{ inputs.dist-dir }}
+        USM_ARCHIVE_PATH: ${{ inputs.archive-path }}
+        # run-command 门禁删评 / 执行回帖（设计 D7）
+        COMMENT_ID: ${{ inputs.comment-id }}
+        POST_REPLY: ${{ inputs.post-reply }}
+        # build 站点产物搬入（合并 assemble_site.py，设计 D7）
+        USM_PAGES_OUT: ${{ inputs.pages-out }}
         # usm 版本解析链第二级（SPEC D3）：精确 vX.Y.Z tag 直接生效；
         # 分支/sha/大版本 tag 不匹配语义化版本 → 回落二进制内嵌 VERSION 文件。
         USM_VERSION: ${{ github.action_ref }}
