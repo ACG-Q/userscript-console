@@ -143,16 +143,23 @@ func Build(reg *registry.Registry, opts Options, data Data) (Outcome, error) {
 	}
 	for _, dp := range docPages {
 		root := "../index.html"
+		indexHref := "index.html"
+		crumbGroup := ""
 		if dp.dir != "" {
 			root = "../../index.html"
+			indexHref = "../index.html"
+			crumbGroup = docGroupCmds
 		}
+		crumbName, _ := splitDocName(dp.title)
 		bodyHTML := RenderMarkdown(dp.content)
 		d := docsData{
-			Title:   dp.title,
-			TOC:     docPages.tocFrom(dp),
-			PageTOC: extractPageTOC(bodyHTML),
-			Nav:     docPages.navFor(dp),
-			Content: template.HTML(bodyHTML),
+			Title:      dp.title,
+			CrumbGroup: crumbGroup,
+			CrumbName:  crumbName,
+			IndexHref:  indexHref,
+			Nav:        docPages.navFor(dp),
+			PageTOC:    extractPageTOC(bodyHTML),
+			Content:    template.HTML(bodyHTML),
 		}
 		h, err := r.renderPage(dp.title, "docs", d, nil, root)
 		if err != nil {
@@ -473,11 +480,6 @@ type commandsData struct {
 	TotalPages int
 }
 
-type docTOCEntry struct {
-	Href string
-	Name string
-}
-
 // docNavGroup 侧边栏分组（介绍 / 命令文档）。
 type docNavGroup struct {
 	Title string
@@ -524,12 +526,15 @@ func extractPageTOC(docHTML string) []docAnchor {
 	return toc
 }
 
+// docsData docs define 的渲染数据：三栏布局（分组侧栏 / 正文 / 本页目录）。
 type docsData struct {
-	Title   string
-	TOC     []docTOCEntry
-	PageTOC []docAnchor
-	Nav     []docNavGroup
-	Content template.HTML
+	Title      string
+	CrumbGroup string // ""（顶层）或分组名（如 "命令文档"）
+	CrumbName  string // 面包屑末节（拆 —— 后的主名）
+	IndexHref  string // 本页视角的文档首页链接
+	Nav        []docNavGroup
+	PageTOC    []docAnchor
+	Content    template.HTML
 }
 
 type commandArchive struct {
@@ -990,15 +995,6 @@ func hrefFor(cur, p docPage) string {
 	default:
 		return "../" + p.slug + ".html"
 	}
-}
-
-// tocFrom 旧顶部目录（任务 5 重写模板后移除）。
-func (ps docPages) tocFrom(cur docPage) []docTOCEntry {
-	toc := make([]docTOCEntry, 0, len(ps))
-	for _, p := range ps {
-		toc = append(toc, docTOCEntry{Href: hrefFor(cur, p), Name: p.title})
-	}
-	return toc
 }
 
 // navFor 分组侧边栏：介绍（顶层，index.md 固定排首、其余字典序）+

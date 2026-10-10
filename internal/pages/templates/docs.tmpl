@@ -1,11 +1,23 @@
 {{define "docs"}}
+<div class="docs-layout">
+<aside class="docs-nav" aria-label="文档导航">
+{{range .Nav}}
+<div class="nav-group">{{.Title}}</div>
+{{range .Items}}<a{{if .Active}} class="on"{{end}} href="{{.Href}}">{{.Name}}{{if .Desc}} <span class="n-desc">{{.Desc}}</span>{{end}}</a>
+{{end}}
+{{end}}
+</aside>
 <main>
-<section class="detail-card">
-<h3 class="cmd-title">{{.Title}}</h3>
-<nav class="cmd-sub" aria-label="文档目录">
-{{range $i, $d := .TOC}}{{if $i}} · {{end}}<a href="{{$d.Href}}">{{$d.Name}}</a>{{end}}
-</nav>
+<nav class="crumbs" aria-label="面包屑"><a href="{{.IndexHref}}">文档</a>{{if .CrumbGroup}}<span class="sep">/</span>{{.CrumbGroup}}{{end}}<span class="sep">/</span>{{.CrumbName}}</nav>
+<h1>{{.Title}}</h1>
 <div class="d-doc">{{.Content}}</div>
-</section>
 </main>
+{{if .PageTOC}}
+<aside class="docs-toc" aria-label="本页目录">
+<div class="toc-label">本页目录</div>
+{{range $i, $a := .PageTOC}}<a href="#{{$a.ID}}"{{if eq $i 0}} class="on"{{end}}>{{$a.Name}}</a>
+{{end}}
+</aside>
+{{end}}
+</div>
 {{end}}

@@ -1427,3 +1427,64 @@ func TestSplitDocName(t *testing.T) {
 		t.Errorf("无分隔符应回退: %q/%q", name, desc)
 	}
 }
+
+// ── 三栏布局（docs.tmpl 重写） ──────────────────────────────
+
+// TestBuildDocsThreeColumnLayout 三栏结构、单一 h1、分组侧栏、
+// 面包屑、右栏开合、锚点链接与正文 id 对应。
+func TestBuildDocsThreeColumnLayout(t *testing.T) {
+	reg := buildTestRegistry(t)
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	writeDocs(t, outDir, map[string]string{
+		"index.md":           "# 文档中心\n\n欢迎。\n\n## 定位\n\na\n\n## 用法\n\nb",
+		"SPEC-DATA-MODEL.md": "# 数据模型\n\n只有一个小节。\n\n## 唯一小节\n\nx",
+		"commands/add.md":    "# add —— 添加脚本\n\n说明。\n\n## 步骤\n\n1\n\n## 注意\n\n2",
+	})
+
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://test.github.io/repo"}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx := out.DocHTMLs["index.html"]
+	if strings.Count(idx, "<h1") != 1 {
+		t.Errorf("首页应恰有 1 个 h1（模板渲染、正文已剥离）, got %d", strings.Count(idx, "<h1"))
+	}
+	for _, want := range []string{`class="docs-layout"`, `class="docs-nav"`, `class="docs-toc"`, `class="crumbs"`} {
+		if !strings.Contains(idx, want) {
+			t.Errorf("docs/index 应含 %s", want)
+		}
+	}
+	for _, want := range []string{docGroupIntro, docGroupCmds, "添加脚本"} {
+		if !strings.Contains(idx, want) {
+			t.Errorf("侧栏应含 %q", want)
+		}
+	}
+	// 右栏开合：index 有 2 个 h2 → 出现；spec 仅 1 个 → 不出现
+	if spec := out.DocHTMLs["spec-data-model.html"]; strings.Contains(spec, `class="docs-toc"`) {
+		t.Errorf("不足 2 节不应渲染右栏目录")
+	}
+	// 右栏 href="#id" 与正文 id="id" 一一对应
+	tocHrefs := regexp.MustCompile(`href="#([^"]+)"`).FindAllStringSubmatch(idx, -1)
+	if len(tocHrefs) == 0 {
+		t.Fatal("index 应有右栏锚点链接")
+	}
+	for _, m := range tocHrefs {
+		if !strings.Contains(idx, `id="`+m[1]+`"`) {
+			t.Errorf("锚点 #%s 缺正文 id 对应", m[1])
+		}
+	}
+	// 当前页高亮（class 在 href 之前，见 docs.tmpl）
+	if !strings.Contains(idx, `<a class="on" href="index.html">`) {
+		t.Errorf("侧栏当前页应高亮")
+	}
+	// 面包屑：commands 页含分组名与回链
+	add := out.DocHTMLs["commands/add.html"]
+	if !strings.Contains(add, "命令文档") || !strings.Contains(add, `href="../index.html"`) {
+		t.Errorf("命令文档页应含面包屑分组名与 ../index.html 回链")
+	}
+	// 旧结构移除（.cmd-title/.cmd-sub 的 CSS 文案因 commands.tmpl 共用而保留）
+	if strings.Contains(idx, `<h3 class="cmd-title">`) || strings.Contains(idx, `class="cmd-sub"`) {
+		t.Errorf("旧 cmd-title/cmd-sub DOM 结构应移除")
+	}
+}
