@@ -223,7 +223,7 @@ func TestTemplatesEmbedded(t *testing.T) {
 			t.Errorf("模板 %s 不存在", want)
 		}
 	}
-	if _, err := newRenderer("", false); err != nil {
+	if _, err := newRenderer("", false, "dev"); err != nil {
 		t.Errorf("全集模板解析失败: %v", err)
 	}
 }
@@ -351,7 +351,7 @@ func TestRenderTombstone(t *testing.T) {
 		CreatedAt: "2026-01-01T00:00:00Z",
 		UpdatedAt: "2026-01-01T00:00:00Z",
 	}
-	r, err := newRenderer("test/repo", false)
+	r, err := newRenderer("test/repo", false, "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +405,7 @@ func TestRenderCommandPagesWithArchive(t *testing.T) {
 		]
 	}`)
 
-	r, err := newRenderer("test/repo", false)
+	r, err := newRenderer("test/repo", false, "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -451,7 +451,7 @@ func TestRenderMarkdownEdgeCases(t *testing.T) {
 func TestRenderCommandsBadArchive(t *testing.T) {
 	outDir := isolatedOut(t)
 	writeCommandsArchive(t, outDir, "not json")
-	r, err := newRenderer("test/repo", false)
+	r, err := newRenderer("test/repo", false, "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,7 +489,7 @@ func TestFilterActiveEmpty(t *testing.T) {
 
 // TestRenderPageBodyNotFound 不存在的 body define 应返回 error。
 func TestRenderPageBodyNotFound(t *testing.T) {
-	r, err := newRenderer("", false)
+	r, err := newRenderer("", false, "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -760,6 +760,39 @@ func TestArchiveNavLinks(t *testing.T) {
 	}
 	if !strings.Contains(out.DetailHTMLs["self01"], `href="../commands/page-1.html"`) {
 		t.Errorf("详情页应含归档导航 href=../commands/page-1.html")
+	}
+}
+
+// TestBuildVersionStamp 全站页脚与 meta generator 须带 usm 版本（设计 §1.3 D4）。
+func TestBuildVersionStamp(t *testing.T) {
+	reg := buildTestRegistry(t)
+	outDir := isolatedOut(t)
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://test.github.io/repo", Version: "9.8.7"}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`<meta name="generator" content="usm v9.8.7">`,
+		`<span>由 usm v9.8.7 构建</span>`,
+	} {
+		if !strings.Contains(out.IndexHTML, want) {
+			t.Errorf("首页应含 %q", want)
+		}
+	}
+	if !strings.Contains(out.DetailHTMLs["self01"], `<meta name="generator" content="usm v9.8.7">`) {
+		t.Error("详情页应含 meta generator")
+	}
+	if out.CommandsIndex != "" && !strings.Contains(out.CommandsIndex, `content="usm v9.8.7"`) {
+		t.Errorf("commands/index.html 应含 meta generator:\n%s", out.CommandsIndex)
+	}
+
+	// Version 未设置 → normalize 兜底 "dev"
+	out2, err := Build(reg, Options{Out: isolatedOut(t)}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out2.IndexHTML, `content="usm vdev"`) {
+		t.Error("未传 Version 时应兜底为 usm vdev")
 	}
 }
 

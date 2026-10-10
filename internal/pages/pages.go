@@ -43,6 +43,7 @@ type Options struct {
 	Batch           int    // 首页每批数量，≤0→10
 	CommandsPerPage int    // 命令分页条数，≤0→5
 	PagesBase       string // 站点基址，如 "https://owner.github.io/repo"
+	Version         string // usm 版本（页脚/meta 展示），空→"dev"
 	Now             time.Time
 }
 
@@ -55,6 +56,9 @@ func (o *Options) normalize() {
 	}
 	if o.CommandsPerPage <= 0 {
 		o.CommandsPerPage = 5
+	}
+	if o.Version == "" {
+		o.Version = "dev"
 	}
 	o.PagesBase = strings.TrimRight(o.PagesBase, "/")
 	if o.Now.IsZero() {
@@ -120,7 +124,7 @@ func Build(reg *registry.Registry, opts Options, data Data) (Outcome, error) {
 	if err != nil {
 		return out, err
 	}
-	r, err := newRenderer(deriveRepo(opts.PagesBase), len(docPages) > 0)
+	r, err := newRenderer(deriveRepo(opts.PagesBase), len(docPages) > 0, opts.Version)
 	if err != nil {
 		return out, err
 	}
@@ -254,9 +258,10 @@ type renderer struct {
 	repo    string
 	issue   int
 	hasDocs bool
+	version string
 }
 
-func newRenderer(repo string, hasDocs bool) (*renderer, error) {
+func newRenderer(repo string, hasDocs bool, version string) (*renderer, error) {
 	funcMap := template.FuncMap{
 		"sub": func(a, b int) int { return a - b },
 		"add": func(a, b int) int { return a + b },
@@ -265,7 +270,7 @@ func newRenderer(repo string, hasDocs bool) (*renderer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("解析模板: %w", err)
 	}
-	return &renderer{t: t, repo: repo, issue: controlIssue, hasDocs: hasDocs}, nil
+	return &renderer{t: t, repo: repo, issue: controlIssue, hasDocs: hasDocs, version: version}, nil
 }
 
 // renderPage 两段式：先渲染 body define，再嵌入 page-shell。
@@ -292,6 +297,7 @@ func (r *renderer) renderPage(title, bodyName string, data any, extraJS []string
 		Repo:     r.repo,
 		Issue:    r.issue,
 		HasDocs:  r.hasDocs,
+		Version:  r.version,
 		Body:     template.HTML(body.String()),
 		ExtraJS:  template.HTML(js.String()),
 	}
@@ -311,6 +317,7 @@ type shellData struct {
 	Repo     string
 	Issue    int
 	HasDocs  bool
+	Version  string
 	Body     template.HTML
 	ExtraJS  template.HTML
 }
@@ -859,7 +866,8 @@ func (r *renderer) renderCommands(opts Options) (map[int]string, string, error) 
 	}
 
 	var idx bytes.Buffer
-	if err := r.t.ExecuteTemplate(&idx, "commands-index", nil); err != nil {
+	// data 传 shellData：commands-index 是重定向壳页，只需要页头 meta 的 Version。
+	if err := r.t.ExecuteTemplate(&idx, "commands-index", shellData{Version: r.version}); err != nil {
 		return result, "", fmt.Errorf("渲染 commands-index: %w", err)
 	}
 	return result, idx.String(), nil

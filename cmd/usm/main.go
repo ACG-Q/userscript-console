@@ -329,7 +329,7 @@ func buildRun(args []string) int {
 	gh := newGitHubClient()
 	// 只在客户端真实存在时赋值：把 nil 的 *github.Client 塞进接口会让
 	// siteBuilder 的判空永远为真（接口非 nil），进而 nil-deref。
-	site := &siteBuilder{root: root, pagesBase: pagesBase, now: now}
+	site := &siteBuilder{root: root, pagesBase: pagesBase, version: buildinfo.Version(), now: now}
 	if gh != nil {
 		site.gh = gh
 	}

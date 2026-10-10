@@ -19,10 +19,13 @@ import (
 
 const corpusPath = "tests/corpus/inputs/registry.json"
 
-// 站点快照的确定性参数（相对时间/链接都随这两个值变化，必须钉死）。
+// 站点快照的确定性参数（相对时间/链接/版本都随这些值变化，必须钉死）。
 var (
 	siteSnapshotBase = "https://acg-q.github.io/userscript-console"
 	siteSnapshotNow  = time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+	// 页脚/会随 buildinfo.Version() 漂移，快照钉死固定值，
+	// 否则每次发版都会把整站快照 diff 出来。
+	siteSnapshotVersion = "0.0.0"
 )
 
 func init() {
@@ -82,6 +85,7 @@ func buildSiteSnapshot(reg *registry.Registry) (map[string]string, error) {
 	out, err := pages.Build(reg, pages.Options{
 		Out:       filepath.Join("tests", "snapshot", "site"),
 		PagesBase: siteSnapshotBase,
+		Version:   siteSnapshotVersion,
 		Now:       siteSnapshotNow,
 	}, pages.Data{})
 	if err != nil {

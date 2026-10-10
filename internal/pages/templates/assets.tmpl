@@ -780,6 +780,7 @@ document.querySelectorAll('.chip').forEach(function (btn) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>{{.Title}}</title>
+<meta name="generator" content="usm v{{.Version}}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><text y=%2215%22 font-size=%2224%22 text-anchor=%22middle%22 fill=%22%233b82f6%22>📜</text></svg>">
 <style>{{template "token-css"}}{{template "component-css"}}{{template "preview-css"}}</style>
 <script>try { var t = localStorage.getItem('asm-theme'); if (t === 'github-light' || t === 'terminal-dark' || t === 'vivid-purple') { document.documentElement.setAttribute('data-theme', t); } } catch (e) { console.warn('无法读取主题偏好', e); }}</script>
@@ -797,6 +798,7 @@ document.querySelectorAll('.chip').forEach(function (btn) {
 {{.Body}}
 <footer class="foot">
 <span>由 {{if .Repo}}<a href="https://github.com/{{.Repo}}" target="_blank" rel="noopener noreferrer">{{.Repo}}</a>{{else}}脚本控制台{{end}} 自动生成</span>
+<span>由 usm v{{.Version}} 构建</span>
 <a href="{{.Rel}}commands/page-1.html">命令归档</a>
 {{if .Repo}}<a href="https://github.com/{{.Repo}}/issues/{{.Issue}}" target="_blank" rel="noopener noreferrer">管理入口 · Issue #{{.Issue}}</a>
 <a href="https://github.com/{{.Repo}}" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>{{end}}

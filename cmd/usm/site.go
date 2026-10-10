@@ -30,6 +30,7 @@ type siteGH interface {
 type siteBuilder struct {
 	root      string
 	pagesBase string
+	version   string // usm 版本（页脚/meta 展示），空→pages normalize 兜底 "dev"
 	now       time.Time
 	gh        siteGH // nil → 跳过 GitHub 抓取（降级渲染，W1 由 pages.Build 统一记）
 }
@@ -41,6 +42,7 @@ func (b *siteBuilder) Build(reg *registry.Registry) (int, bool, []string, error)
 	out, err := pages.Build(reg, pages.Options{
 		Out:       filepath.Join(b.root, "dist"),
 		PagesBase: b.pagesBase,
+		Version:   b.version,
 		Now:       b.now,
 	}, data)
 	if err != nil {
