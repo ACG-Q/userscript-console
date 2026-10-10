@@ -1016,8 +1016,8 @@ func loadDocs(opts Options) (docPages, error) {
 		if err != nil {
 			return nil, fmt.Errorf("读取文档 %s 失败: %w", filepath.Join(f.dir, f.name), err)
 		}
-		dp.content = string(b)
-		dp.title = docTitle(dp.content, stem)
+		dp.title = docTitle(string(b), stem)
+		dp.content = stripLeadingH1(string(b))
 		pages = append(pages, dp)
 	}
 	if !hasTopIndex {
@@ -1051,6 +1051,20 @@ func docTitle(content, fallback string) string {
 		}
 	}
 	return fallback
+}
+
+// stripLeadingH1 移除文首 H1（允许前导空行）：标题由模板单独渲染一次，
+// 避免 <title>/<h1>/正文三处重复；非文首的 "# " 行原样保留。
+func stripLeadingH1(content string) string {
+	lines := strings.Split(content, "\n")
+	i := 0
+	for i < len(lines) && strings.TrimSpace(lines[i]) == "" {
+		i++
+	}
+	if i == len(lines) || !strings.HasPrefix(strings.TrimSpace(lines[i]), "# ") {
+		return content
+	}
+	return strings.Join(lines[i+1:], "\n")
 }
 
 // ── 辅助函数 ─────────────────────────────────────────────────

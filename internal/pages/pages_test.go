@@ -1313,3 +1313,48 @@ func TestBuildDocsWithCommandsNoTopIndex(t *testing.T) {
 		t.Errorf("无文档页时 nav 不应出现文档链接")
 	}
 }
+
+// ── H1 剥离（标题去重的数据侧） ─────────────────────────────
+
+// TestStripLeadingH1 文首 H1 剥离规则。
+func TestStripLeadingH1(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"文首 H1 剥离", "# 文档中心\n\n正文。", "\n正文。"},
+		{"前导空行后剥离", "\n\n# 标题\n正文", "正文"},
+		{"无 H1 原样返回", "## 二级\n\n正文", "## 二级\n\n正文"},
+		{"H1 不在文首保留", "段落。\n\n# 中段标题\n正文", "段落。\n\n# 中段标题\n正文"},
+		{"缺空格不视为 H1", "#标签\n正文", "#标签\n正文"},
+		{"仅一行 H1 得空串", "# 唯一标题", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := stripLeadingH1(c.in); got != c.want {
+				t.Errorf("stripLeadingH1(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+// TestLoadDocsStripsLeadingH1 loadDocs：title 取自原 H1、content 已剥离。
+func TestLoadDocsStripsLeadingH1(t *testing.T) {
+	outDir := isolatedOut(t)
+	writeDocs(t, outDir, map[string]string{
+		"index.md": "\n# 文档中心\n\n正文段落。",
+	})
+	pages, err := loadDocs(Options{Out: outDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pages) != 1 {
+		t.Fatalf("应读到 1 个文档, got %d", len(pages))
+	}
+	if pages[0].title != "文档中心" {
+		t.Errorf("title 应取自原 H1, got %q", pages[0].title)
+	}
+	if strings.Contains(pages[0].content, "# ") {
+		t.Errorf("文首 H1 应已剥离, got %q", pages[0].content)
+	}
+	if !strings.Contains(pages[0].content, "正文段落") {
+		t.Errorf("正文应保留, got %q", pages[0].content)
+	}
+}
