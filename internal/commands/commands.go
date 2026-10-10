@@ -32,9 +32,6 @@ import (
 // ErrUnknown 未注册命令（调用方用 errors.Is 判定）。
 var ErrUnknown = errors.New("未知命令")
 
-// registryFileName 数据根下的账本文件名（SPEC-DATA §1.1）。
-const registryFileName = "registry.json"
-
 // ── 契约类型 ────────────────────────────────────────────────
 
 // SiteBuilder 整站生成器，由 cli 层（cmd/usm）注入。
@@ -205,7 +202,7 @@ func loadReg(env *Env) (*registry.Registry, error) {
 	}
 	r, err := registry.Load(regPath(env))
 	if err != nil {
-		return nil, fmt.Errorf("读取 %s 失败: %w", registryFileName, err)
+		return nil, fmt.Errorf("读取 %s 失败: %w", regPath(env), err)
 	}
 	return r, nil
 }
@@ -213,7 +210,7 @@ func loadReg(env *Env) (*registry.Registry, error) {
 // saveReg 原子落盘账本；成功 → Changed=true。
 func saveReg(env *Env, r *registry.Registry) (bool, error) {
 	if err := r.Save(regPath(env)); err != nil {
-		return false, fmt.Errorf("写入 %s 失败: %w", registryFileName, err)
+		return false, fmt.Errorf("写入 %s 失败: %w", regPath(env), err)
 	}
 	return true, nil
 }
