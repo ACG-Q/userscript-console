@@ -84,11 +84,25 @@ func TestActionContractInterfaceFrozen(t *testing.T) {
 		}
 	}
 
-	requiredOutputs := []string{"authorized", "changed", "result", "warnings"}
+	requiredOutputs := []string{"authorized", "changed", "result", "warnings", "version"}
 	for _, name := range requiredOutputs {
 		if _, ok := doc.Outputs[name]; !ok {
 			t.Errorf("action.yml 缺少 output %q", name)
 		}
+	}
+
+	// USM_VERSION 透传（设计 §1.2 D3/D4）：源码模式经 env 把 action ref
+	// 交给 buildinfo 解析链；精确 vX.Y.Z tag 直接生效，其余回落 VERSION 文件。
+	runEnv := map[string]string{}
+	for _, s := range doc.Runs.Steps {
+		if s.Name == "Run" {
+			runEnv = s.Env
+		}
+	}
+	if got, ok := runEnv["USM_VERSION"]; !ok {
+		t.Error("Run 步骤 env 缺少 USM_VERSION")
+	} else if !strings.Contains(got, "github.action_ref") {
+		t.Errorf("USM_VERSION 应取自 github.action_ref, 实际 %q", got)
 	}
 }
 

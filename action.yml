@@ -78,6 +78,9 @@ outputs:
   warnings:
     description: "build 的告警（单行化，%0A 分隔）"
     value: ${{ steps.run.outputs.warnings }}
+  version:
+    description: 'usm 版本（二进制模式为二进制自报；源码模式经 USM_VERSION=action_ref 解析，非语义化 ref 回落仓库 VERSION 文件）'
+    value: ${{ steps.run.outputs.version }}
 
 runs:
   using: composite
@@ -187,6 +190,9 @@ runs:
         USM_KEEP: ${{ inputs.keep }}
         USM_APPLY: ${{ inputs.apply }}
         USM_ROOT: ${{ github.workspace }}
+        # usm 版本解析链第二级（SPEC D3）：精确 vX.Y.Z tag 直接生效；
+        # 分支/sha/大版本 tag 不匹配语义化版本 → 回落二进制内嵌 VERSION 文件。
+        USM_VERSION: ${{ github.action_ref }}
         # 二进制模式下由 Fetch 步骤产出；源码模式为空
         USM_BIN: ${{ steps.fetch.outputs.path }}
       run: |
@@ -235,6 +241,7 @@ runs:
 
           printf 'changed=%s\n'    "$(jq -r '.changed // false'  usm-out.json)" >> "$GITHUB_OUTPUT"
           printf 'authorized=%s\n' "$(jq -r '.authorized // true' usm-out.json)" >> "$GITHUB_OUTPUT"
+          printf 'version=%s\n'    "$(jq -r '.version // empty'  usm-out.json)" >> "$GITHUB_OUTPUT"
 
           {
             printf 'warnings<<%s\n' "$EOF_ID"
