@@ -161,7 +161,11 @@ func Build(reg *registry.Registry, opts Options, data Data) (Outcome, error) {
 			PageTOC:    extractPageTOC(bodyHTML),
 			Content:    template.HTML(bodyHTML),
 		}
-		h, err := r.renderPage(dp.title, "docs", d, nil, root)
+		var extra []string
+		if len(d.PageTOC) > 0 {
+			extra = []string{"docs-toc-js"}
+		}
+		h, err := r.renderPage(dp.title, "docs", d, extra, root)
 		if err != nil {
 			return out, err
 		}

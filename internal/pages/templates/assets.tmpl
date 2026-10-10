@@ -467,6 +467,25 @@ footer.foot a { font-weight: 600; }
   .docs-layout main { padding: 18px 16px 60px; border-left: none; border-right: none; }
 }
 {{end}}
+{{define "docs-toc-js"}}<script>
+(function () {
+  var links = document.querySelectorAll('.docs-toc a');
+  if (!links.length) return;
+  function mark() {
+    var active = null;
+    var hash = location.hash;
+    for (var i = 0; i < links.length; i++) {
+      if (links[i].getAttribute('href') === hash) active = links[i];
+    }
+    if (!active) active = links[0];
+    for (var j = 0; j < links.length; j++) {
+      links[j].classList.toggle('on', links[j] === active);
+    }
+  }
+  window.addEventListener('hashchange', mark);
+  mark();
+})();
+</script>{{end}}
 {{define "preview-css"}}
 .pv-a { --pv-bar-bg: #fff; --pv-bar-bd: #d8dee4; --pv-bar-fg: #0969da; --pv-hero-bg: #f6f8fa; --pv-title: #1f2328; --pv-sub: #8c959f; --pv-stat-bg: #fff; --pv-stat-bd: #d8dee4; --pv-accent: #0969da; --pv-body-bg: #fff; --pv-card-bg: #fff; --pv-card-bd: #d8dee4; }
 .pv-b { --pv-bar-bg: #0b0e0c; --pv-bar-bd: #2c302c; --pv-bar-fg: #3fb950; --pv-hero-bg: #0b0e0c; --pv-title: #eef1ef; --pv-sub: #898f8a; --pv-stat-bg: #191f1a; --pv-stat-bd: #2c302c; --pv-accent: #3fb950; --pv-body-bg: #101411; --pv-card-bg: #191f1a; --pv-card-bd: #2c302c; }

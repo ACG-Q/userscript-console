@@ -1488,3 +1488,24 @@ func TestBuildDocsThreeColumnLayout(t *testing.T) {
 		t.Errorf("旧 cmd-title/cmd-sub DOM 结构应移除")
 	}
 }
+
+// TestBuildDocsTOCHighlightScript 有本页目录才注入高亮脚本（无目录页零开销）。
+func TestBuildDocsTOCHighlightScript(t *testing.T) {
+	reg := buildTestRegistry(t)
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	writeDocs(t, outDir, map[string]string{
+		"index.md":  "# 首页\n\n## 一\n\nx\n\n## 二\n\ny",
+		"single.md": "# 单节\n\n## 唯一\n\nz",
+	})
+	out, err := Build(reg, Options{Out: outDir, PagesBase: "https://test.github.io/repo"}, Data{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.DocHTMLs["index.html"], "hashchange") {
+		t.Errorf("多节目录页应注入 docs-toc-js")
+	}
+	if strings.Contains(out.DocHTMLs["single.html"], "hashchange") {
+		t.Errorf("无目录页不应注入高亮脚本")
+	}
+}
