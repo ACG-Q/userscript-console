@@ -8,6 +8,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -221,6 +222,21 @@ func runCommandRun(args []string) int {
 		return 2
 	}
 
+	// 门禁删评目标（设计 D7）：--comment-id > env COMMENT_ID；
+	// 缺失/0 → 门禁未授权时不删评。非法值按用法错误 exit 2。
+	commentID := int64(0)
+	rawCommentID := flagVal(args, "--comment-id")
+	if rawCommentID == "" {
+		rawCommentID = cli.EnvOr("COMMENT_ID", "")
+	}
+	if rawCommentID != "" {
+		commentID, err = strconv.ParseInt(strings.TrimSpace(rawCommentID), 10, 64)
+		if err != nil || commentID <= 0 {
+			fmt.Fprintf(os.Stderr, "ERROR: --comment-id 必须是正整数: %q\n", rawCommentID)
+			return 2
+		}
+	}
+
 	// 门禁 1（SPEC-CLI §1 判定顺序）：非命令面板 Issue → 不执行，exit 0。
 	if issueNum != controlIssueNumber {
 		return emitCommandResult(commands.Result{
@@ -232,6 +248,9 @@ func runCommandRun(args []string) int {
 	if flags.RepoOwner != "" && flags.CommentUser != flags.RepoOwner {
 		return emitCommandResult(commands.Result{
 			Text: fmt.Sprintf("权限不足：%s 不是仓库所有者 %s", flags.CommentUser, flags.RepoOwner),
+			// 未授权命令由 usm 自删触发评论（设计 D7，合并 gate.py）；
+			// 删除失败只记 warning，不改退出码。
+			Warnings: deleteGateComment(context.Background(), commentID),
 		}, false, flags)
 	}
 
@@ -268,6 +287,27 @@ func runCommandRun(args []string) int {
 
 // controlIssueNumber 命令面板 Issue 号（SPEC-CLI §1 判定顺序第 1 步）。
 const controlIssueNumber = 1
+
+// newGHClient 构造 GitHub 客户端的注入点：门禁删评（本任务）与执行回帖（T13）
+// 用它拿客户端，测试可替换为指向 httptest 的实例；其余既有调用点不变。
+var newGHClient = newGitHubClient
+
+// deleteGateComment 门禁未授权时按 comment-id 删除触发评论（设计 D7）。
+// commentID <= 0 或 GitHub 未配置 → 不动作（返回 nil）；
+// 删除失败 → 返回 warning 条目，调用方不改退出码。
+func deleteGateComment(ctx context.Context, commentID int64) []string {
+	if commentID <= 0 {
+		return nil
+	}
+	ghc := newGHClient()
+	if ghc == nil {
+		return nil
+	}
+	if err := ghc.DeleteCommentByNumber(ctx, commentID); err != nil {
+		return []string{"门禁评论删除失败: " + err.Error()}
+	}
+	return nil
+}
 
 // emitCommandResult 输出 run-command 结果并落 --result-file 兼容层（SPEC-CLI §1）。
 func emitCommandResult(res commands.Result, authorized bool, flags cli.RunCommandFlags) int {

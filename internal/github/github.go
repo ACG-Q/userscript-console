@@ -23,6 +23,8 @@ import (
 
 const defaultEndpoint = "https://api.github.com/graphql"
 
+const defaultRESTEndpoint = "https://api.github.com"
+
 // Doer 网络注入点。
 type Doer interface {
 	Do(*http.Request) (*http.Response, error)
@@ -42,15 +44,16 @@ var rateLimitRe = regexp.MustCompile(`(?i)rate limit|abuse detection|secondary r
 
 func isRateLimited(msg string) bool { return rateLimitRe.MatchString(msg) }
 
-// Client GraphQL 客户端。
+// Client GraphQL 客户端（restEndpoint 供 REST 方法使用，与 GraphQL endpoint 分开）。
 type Client struct {
-	token    string
-	owner    string
-	name     string
-	endpoint string
-	doer     Doer
-	retry    int
-	backoff  time.Duration
+	token        string
+	owner        string
+	name         string
+	endpoint     string
+	restEndpoint string
+	doer         Doer
+	retry        int
+	backoff      time.Duration
 
 	mu            sync.Mutex
 	cachedRepoID  string
@@ -61,7 +64,11 @@ type Option func(*Client)
 
 func WithDoer(d Doer) Option       { return func(c *Client) { c.doer = d } }
 func WithEndpoint(u string) Option { return func(c *Client) { c.endpoint = u } }
-func WithRetry(n int) Option       { return func(c *Client) { c.retry = n } }
+
+// WithRESTEndpoint 覆盖 REST 基址（测试注入 httptest.Server.URL；生产默认 api.github.com）。
+func WithRESTEndpoint(u string) Option { return func(c *Client) { c.restEndpoint = u } }
+
+func WithRetry(n int) Option { return func(c *Client) { c.retry = n } }
 
 // New 构造客户端。token 空、repo 非 "owner/name" → error。
 func New(token, repo string, opts ...Option) (*Client, error) {
@@ -73,13 +80,14 @@ func New(token, repo string, opts ...Option) (*Client, error) {
 		return nil, fmt.Errorf("github: repo 必须为 owner/name，实际 %q", repo)
 	}
 	c := &Client{
-		token:    token,
-		owner:    parts[0],
-		name:     parts[1],
-		endpoint: defaultEndpoint,
-		doer:     http.DefaultClient,
-		retry:    2,
-		backoff:  100 * time.Millisecond,
+		token:        token,
+		owner:        parts[0],
+		name:         parts[1],
+		endpoint:     defaultEndpoint,
+		restEndpoint: defaultRESTEndpoint,
+		doer:         http.DefaultClient,
+		retry:        2,
+		backoff:      100 * time.Millisecond,
 	}
 	for _, o := range opts {
 		o(c)
@@ -262,4 +270,53 @@ func (c *Client) repoID(ctx context.Context) (string, error) {
 	c.cachedRepoID, c.repoIDFetched = out.Repository.ID, true
 	c.mu.Unlock()
 	return out.Repository.ID, nil
+}
+
+// restRequest 发起 api.github.com REST 请求（body 可为 nil），
+// 非 2xx 返回带状态码的错误。与 GraphQL 通道分开：REST 走 c.restEndpoint。
+func (c *Client) restRequest(ctx context.Context, method, path string, body any) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var rdr io.Reader
+	if body != nil {
+		payload, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("github: REST 请求编码失败: %w", err)
+		}
+		rdr = bytes.NewReader(payload)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.restEndpoint, "/")+path, rdr)
+	if err != nil {
+		return fmt.Errorf("github: 构造 REST 请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := c.doer.Do(req)
+	if err != nil {
+		return fmt.Errorf("github: REST %s %s 请求失败: %w", method, path, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		snippet := strings.TrimSpace(string(respBody))
+		if len(snippet) > 300 {
+			snippet = snippet[:300] + "…"
+		}
+		return fmt.Errorf("github: REST %s %s HTTP %d: %s", method, path, resp.StatusCode, snippet)
+	}
+	return nil
+}
+
+// DeleteCommentByNumber 按数字 ID 删除 Issue 评论。
+// 门禁删评必须走 REST：webhook 只给数字 comment id，GraphQL 只认 node ID。
+func (c *Client) DeleteCommentByNumber(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return errors.New("github: 评论 id 必须为正整数")
+	}
+	return c.restRequest(ctx, http.MethodDelete,
+		fmt.Sprintf("/repos/%s/%s/issues/comments/%d", c.owner, c.name, id), nil)
 }
