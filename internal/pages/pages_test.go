@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -111,6 +112,21 @@ func TestRenderMarkdown(t *testing.T) {
 				t.Errorf("XSS 未过滤: %s", got)
 			}
 		})
+	}
+}
+
+// TestRenderMarkdownHeadingAnchors 标题自动生成锚点 id（右栏本页目录依赖），
+// 且经 bluemonday UGCPolicy 消毒后存活。
+func TestRenderMarkdownHeadingAnchors(t *testing.T) {
+	re := regexp.MustCompile(`<h2 id="([^"]*)">`)
+	ids := re.FindAllStringSubmatch(RenderMarkdown("## Usage\n\n正文"), -1)
+	if len(ids) != 1 || !strings.EqualFold(ids[0][1], "usage") {
+		t.Errorf("ASCII 标题应生成 usage 锚点, got %v", ids)
+	}
+	src := "## 定位\n\n正文\n\n## 用法\n\n正文"
+	cn := re.FindAllStringSubmatch(RenderMarkdown(src), -1)
+	if len(cn) != 2 || cn[0][1] == "" || cn[1][1] == "" || cn[0][1] == cn[1][1] {
+		t.Errorf("中文标题应生成两个互异非空锚点（多字节字符会被丢弃）, got %v, html=%q", cn, RenderMarkdown(src))
 	}
 }
 

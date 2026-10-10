@@ -28,6 +28,7 @@ import (
 	"github.com/acg-q/userscript-console/internal/times"
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/parser"
 	htmlmd "github.com/yuin/goldmark/renderer/html"
 )
 
@@ -245,6 +246,9 @@ func RenderMarkdown(src string) string {
 	var buf bytes.Buffer
 	md := goldmark.New(
 		goldmark.WithExtensions(),
+		goldmark.WithParserOptions(
+			parser.WithAutoHeadingID(), // h2 锚点 id：右栏本页目录依赖（经 bluemonday 存活）
+		),
 		goldmark.WithRendererOptions(
 			htmlmd.WithUnsafe(), // 允许原始 HTML，交给 bluemonday 兜底消毒
 		),
