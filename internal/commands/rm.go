@@ -2,8 +2,6 @@ package commands
 
 import (
 	"strings"
-
-	"github.com/acg-q/userscript-console/internal/script"
 )
 
 func init() {
@@ -46,10 +44,10 @@ func runRm(env *Env, args string, codeBlocks []string) (Result, error) {
 	}
 
 	// 移除源码与分发产物（self/synced 同待遇；对齐 Python _soft_delete，doctor 双删校验）
-	if err := script.RemoveSource(env.Root, s.ID, s.Type); err != nil {
+	if err := env.FS().RemoveSource(s.ID, s.Type); err != nil {
 		return reply(changed, "❌ 已软删除脚本 %q，但源文件失败: %v", s.Name, err)
 	}
-	if err := script.RemoveDist(env.Root, s.ID); err != nil {
+	if err := env.FS().RemoveDist(s.ID); err != nil {
 		return reply(changed, "❌ 已软删除脚本 %q，但分发产物失败: %v", s.Name, err)
 	}
 

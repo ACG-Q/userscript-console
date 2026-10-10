@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/acg-q/userscript-console/internal/registry"
-	"github.com/acg-q/userscript-console/internal/script"
 )
 
 // fakeSite 记录 /build 对 Env.Site 的调用。
@@ -106,10 +105,10 @@ func TestBuildIncludesSynced(t *testing.T) {
 
 	selfCode := "// ==UserScript==\n// @name self\n// @version 1.0.0\n// @match *://*/*\n// ==/UserScript=="
 	syncedCode := "// ==UserScript==\n// @name synced\n// @version 2.0.0\n// @match *://example.com/*\n// ==/UserScript=="
-	if err := script.WriteSource(env.Root, "self01", registry.TypeSelf, selfCode); err != nil {
+	if err := env.FS().WriteSource("self01", registry.TypeSelf, selfCode); err != nil {
 		t.Fatalf("写 self 源失败: %v", err)
 	}
-	if err := script.WriteSource(env.Root, "sync01", registry.TypeSynced, syncedCode); err != nil {
+	if err := env.FS().WriteSource("sync01", registry.TypeSynced, syncedCode); err != nil {
 		t.Fatalf("写 synced 源失败: %v", err)
 	}
 
@@ -136,7 +135,7 @@ func TestBuildDistIdempotent(t *testing.T) {
 	env.PagesBase = "https://example.github.io/repo"
 
 	selfCode := "// ==UserScript==\n// @name self\n// @version 1.0.0\n// @match *://*/*\n// ==/UserScript=="
-	if err := script.WriteSource(env.Root, "self01", registry.TypeSelf, selfCode); err != nil {
+	if err := env.FS().WriteSource("self01", registry.TypeSelf, selfCode); err != nil {
 		t.Fatalf("写源失败: %v", err)
 	}
 

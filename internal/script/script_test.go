@@ -449,17 +449,19 @@ func TestChangelog头插顺序与幂等(t *testing.T) {
 // ── 路径 ────────────────────────────────────────────────────
 
 func Test路径契约精确字符串(t *testing.T) {
+	f := FS{} // 零值 → 默认 scripts/dist，与历史硬编码一致
 	cases := []struct {
 		name string
 		got  string
 		want string
 	}{
-		{"自写源码", SelfSourcePath("demo"), "scripts/self/demo/index.js"},
-		{"同步源码", SyncedSourcePath("demo"), "scripts/synced/demo/script.user.js"},
-		{"分发产物", DistPath("demo"), "dist/demo.user.js"},
-		{"自写文档", DocPath("demo-script"), "scripts/self/demo-script/README.md"},
-		{"synced形态无文档", DocPath("0123456789ab"), ""},
-		{"大写形态不误判为synced", DocPath("ABCDEF123456"), "scripts/self/ABCDEF123456/README.md"},
+		{"自写源码", f.SelfSourcePath("demo"), "scripts/self/demo/index.js"},
+		{"同步源码", f.SyncedSourcePath("demo"), "scripts/synced/demo/script.user.js"},
+		{"分发产物", f.DistPath("demo"), "dist/demo.user.js"},
+		{"自写文档", f.DocPath("demo-script"), "scripts/self/demo-script/README.md"},
+		{"synced形态无文档", f.DocPath("0123456789ab"), ""},
+		{"大写形态不误判为synced", f.DocPath("ABCDEF123456"), "scripts/self/ABCDEF123456/README.md"},
+		{"自定义目录", (FS{Scripts: "uscripts", Dist: "cdn"}).DistPath("demo"), "cdn/demo.user.js"},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {

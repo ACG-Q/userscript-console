@@ -63,10 +63,11 @@ func Test源码写读往返(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
-			if err := WriteSource(root, tt.id, tt.scriptType, content); err != nil {
+			f := FS{Root: root}
+			if err := f.WriteSource(tt.id, tt.scriptType, content); err != nil {
 				t.Fatalf("WriteSource 报错: %v", err)
 			}
-			got, err := ReadSource(root, tt.id, tt.scriptType)
+			got, err := f.ReadSource(tt.id, tt.scriptType)
 			if err != nil {
 				t.Fatalf("ReadSource 报错: %v", err)
 			}
@@ -87,16 +88,45 @@ func Test源码写读往返(t *testing.T) {
 	}
 }
 
+func Test自定义脚本与分发目录(t *testing.T) {
+	root := t.TempDir()
+	f := FS{Root: root, Scripts: "uscripts", Dist: "cdn"}
+	if err := f.WriteSource("demo-script", registry.TypeSelf, "src"); err != nil {
+		t.Fatalf("WriteSource 报错: %v", err)
+	}
+	if rel := f.SelfSourcePath("demo-script"); rel != "uscripts/self/demo-script/index.js" {
+		t.Errorf("SelfSourcePath = %q", rel)
+	}
+	if _, err := os.Stat(filepath.Join(root, "uscripts", "self", "demo-script", "index.js")); err != nil {
+		t.Errorf("自定义 scripts 目录未生效: %v", err)
+	}
+	if err := f.WriteDist("demo-script", "dist"); err != nil {
+		t.Fatalf("WriteDist 报错: %v", err)
+	}
+	if rel := f.DistPath("demo-script"); rel != "cdn/demo-script.user.js" {
+		t.Errorf("DistPath = %q", rel)
+	}
+	if _, err := os.Stat(filepath.Join(root, "cdn", "demo-script.user.js")); err != nil {
+		t.Errorf("自定义 dist 目录未生效: %v", err)
+	}
+	// 零值 FS 行为与历史硬编码一致
+	def := FS{Root: root}
+	if rel := def.DistPath("demo-script"); rel != "dist/demo-script.user.js" {
+		t.Errorf("零值 DistPath = %q", rel)
+	}
+}
+
 func Test覆盖写入原子无临时残留(t *testing.T) {
 	root := t.TempDir()
+	f := FS{Root: root}
 	id := "twice"
-	if err := WriteSource(root, id, registry.TypeSelf, "first"); err != nil {
+	if err := f.WriteSource(id, registry.TypeSelf, "first"); err != nil {
 		t.Fatalf("首次写入报错: %v", err)
 	}
-	if err := WriteSource(root, id, registry.TypeSelf, "second"); err != nil {
+	if err := f.WriteSource(id, registry.TypeSelf, "second"); err != nil {
 		t.Fatalf("覆盖写入报错: %v", err)
 	}
-	got, err := ReadSource(root, id, registry.TypeSelf)
+	got, err := f.ReadSource(id, registry.TypeSelf)
 	if err != nil || got != "second" {
 		t.Errorf("覆盖后内容 = %q (err=%v)，期望 %q", got, err, "second")
 	}
@@ -110,11 +140,12 @@ func Test覆盖写入原子无临时残留(t *testing.T) {
 
 func Test自动创建数据根与深层目录(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "nested", "root") // 数据根尚不存在
+	f := FS{Root: root}
 	const content = "dist 内容\n"
-	if err := WriteDist(root, "demo", content); err != nil {
+	if err := f.WriteDist("demo", content); err != nil {
 		t.Fatalf("WriteDist 应自动创建数据根: %v", err)
 	}
-	got, err := ReadDist(root, "demo")
+	got, err := f.ReadDist("demo")
 	if err != nil || got != content {
 		t.Errorf("读回 = %q (err=%v)", got, err)
 	}
@@ -123,24 +154,25 @@ func Test自动创建数据根与深层目录(t *testing.T) {
 
 func TestDist与文档写读(t *testing.T) {
 	root := t.TempDir()
+	f := FS{Root: root}
 	const dist = "// dist 内容\n"
-	if err := WriteDist(root, "demo", dist); err != nil {
+	if err := f.WriteDist("demo", dist); err != nil {
 		t.Fatalf("WriteDist 报错: %v", err)
 	}
-	got, err := ReadDist(root, "demo")
+	got, err := f.ReadDist("demo")
 	if err != nil || got != dist {
 		t.Errorf("ReadDist = %q (err=%v)", got, err)
 	}
-	if p := DistPath("demo"); p != "dist/demo.user.js" {
+	if p := f.DistPath("demo"); p != "dist/demo.user.js" {
 		t.Errorf("DistPath = %q", p)
 	}
 
 	const doc = "# 文档\n\n这是说明。\n"
 	selfID := "my-doc-script" // self id（非 synced 形态），DocPath 非空
-	if err := WriteDoc(root, selfID, doc); err != nil {
+	if err := f.WriteDoc(selfID, doc); err != nil {
 		t.Fatalf("WriteDoc 报错: %v", err)
 	}
-	b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(DocPath(selfID))))
+	b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f.DocPath(selfID))))
 	if err != nil {
 		t.Fatalf("文档文件未生成: %v", err)
 	}
@@ -152,35 +184,38 @@ func TestDist与文档写读(t *testing.T) {
 
 func Test对Synced无文档路径(t *testing.T) {
 	const syncedID = "0123456789ab" // 12 位小写 hex = synced 形态
-	if DocPath(syncedID) != "" {
-		t.Errorf("synced 的 DocPath 应为空串，得到 %q", DocPath(syncedID))
+	f := FS{}
+	if f.DocPath(syncedID) != "" {
+		t.Errorf("synced 的 DocPath 应为空串，得到 %q", f.DocPath(syncedID))
 	}
 	root := t.TempDir()
-	if err := WriteDoc(root, syncedID, "x"); err == nil {
+	fr := FS{Root: root}
+	if err := fr.WriteDoc(syncedID, "x"); err == nil {
 		t.Error("对 synced 写文档应报错（调用方须先判断）")
 	}
 	// 移除则幂等返回 nil：/rm 对 synced 脚本无条件调用不致失败
-	if err := RemoveDoc(root, syncedID); err != nil {
+	if err := fr.RemoveDoc(syncedID); err != nil {
 		t.Errorf("对 synced 删文档应幂等 nil，实际: %v", err)
 	}
 }
 
 func Test移除幂等与目录回收(t *testing.T) {
 	root := t.TempDir()
+	f := FS{Root: root}
 	selfID := "d1"
 	syncedID := "0123456789ab"
 
 	// self：源码 + 文档同目录
-	if err := WriteSource(root, selfID, registry.TypeSelf, "src"); err != nil {
+	if err := f.WriteSource(selfID, registry.TypeSelf, "src"); err != nil {
 		t.Fatalf("WriteSource 报错: %v", err)
 	}
-	if err := WriteDoc(root, selfID, "# doc"); err != nil {
+	if err := f.WriteDoc(selfID, "# doc"); err != nil {
 		t.Fatalf("WriteDoc 报错: %v", err)
 	}
 	selfDir := filepath.Join(root, "scripts", "self", selfID)
 
 	// RemoveSource 只删源码，文档不被连带删除（目录非空 → 保留）
-	if err := RemoveSource(root, selfID, registry.TypeSelf); err != nil {
+	if err := f.RemoveSource(selfID, registry.TypeSelf); err != nil {
 		t.Fatalf("RemoveSource 报错: %v", err)
 	}
 	notExist(t, filepath.Join(selfDir, "index.js"), "源码文件")
@@ -188,42 +223,42 @@ func Test移除幂等与目录回收(t *testing.T) {
 		t.Errorf("文档不应被连带删除: %v", err)
 	}
 	// 重复移除 → nil（幂等）
-	if err := RemoveSource(root, selfID, registry.TypeSelf); err != nil {
+	if err := f.RemoveSource(selfID, registry.TypeSelf); err != nil {
 		t.Errorf("重复 RemoveSource 应 nil，实际: %v", err)
 	}
 
 	// RemoveDoc 删文档后，空目录被回收；重复移除 → nil
-	if err := RemoveDoc(root, selfID); err != nil {
+	if err := f.RemoveDoc(selfID); err != nil {
 		t.Fatalf("RemoveDoc 报错: %v", err)
 	}
 	notExist(t, filepath.Join(selfDir, "README.md"), "文档文件")
 	notExist(t, selfDir, "空的脚本目录")
-	if err := RemoveDoc(root, selfID); err != nil {
+	if err := f.RemoveDoc(selfID); err != nil {
 		t.Errorf("重复 RemoveDoc 应 nil，实际: %v", err)
 	}
 
 	// synced：删源码即回收目录
-	if err := WriteSource(root, syncedID, registry.TypeSynced, "upstream"); err != nil {
+	if err := f.WriteSource(syncedID, registry.TypeSynced, "upstream"); err != nil {
 		t.Fatalf("WriteSource 报错: %v", err)
 	}
 	syncedDir := filepath.Join(root, "scripts", "synced", syncedID)
-	if err := RemoveSource(root, syncedID, registry.TypeSynced); err != nil {
+	if err := f.RemoveSource(syncedID, registry.TypeSynced); err != nil {
 		t.Fatalf("RemoveSource 报错: %v", err)
 	}
 	notExist(t, syncedDir, "synced 源码目录")
-	if err := RemoveSource(root, syncedID, registry.TypeSynced); err != nil {
+	if err := f.RemoveSource(syncedID, registry.TypeSynced); err != nil {
 		t.Errorf("重复 RemoveSource 应 nil，实际: %v", err)
 	}
 
 	// dist：文件删除幂等，且不回收共享的 dist/ 目录
-	if err := WriteDist(root, selfID, "dist"); err != nil {
+	if err := f.WriteDist(selfID, "dist"); err != nil {
 		t.Fatalf("WriteDist 报错: %v", err)
 	}
-	if err := RemoveDist(root, selfID); err != nil {
+	if err := f.RemoveDist(selfID); err != nil {
 		t.Fatalf("RemoveDist 报错: %v", err)
 	}
 	notExist(t, filepath.Join(root, "dist", selfID+".user.js"), "dist 文件")
-	if err := RemoveDist(root, selfID); err != nil {
+	if err := f.RemoveDist(selfID); err != nil {
 		t.Errorf("重复 RemoveDist 应 nil，实际: %v", err)
 	}
 	if names := listDir(t, filepath.Join(root, "dist")); len(names) != 0 {
@@ -233,15 +268,16 @@ func Test移除幂等与目录回收(t *testing.T) {
 
 func Test非法输入返回错误不Panic(t *testing.T) {
 	root := t.TempDir()
+	f := FS{Root: root}
 
 	// 未知脚本类型
-	if err := WriteSource(root, "x", "bogus", "c"); err == nil {
+	if err := f.WriteSource("x", "bogus", "c"); err == nil {
 		t.Error("未知类型写入应报错")
 	}
-	if _, err := ReadSource(root, "x", "bogus"); err == nil {
+	if _, err := f.ReadSource("x", "bogus"); err == nil {
 		t.Error("未知类型读取应报错")
 	}
-	if err := RemoveSource(root, "x", "bogus"); err == nil {
+	if err := f.RemoveSource("x", "bogus"); err == nil {
 		t.Error("未知类型移除应报错")
 	}
 
@@ -249,9 +285,13 @@ func Test非法输入返回错误不Panic(t *testing.T) {
 	if _, err := resolve(root, "bad\\path"); err == nil {
 		t.Error("resolve 反斜杠路径应报错")
 	}
-	// resolve 空段拒绝
+	// resolve 空段拒绝（相对路径）
 	if _, err := resolve(root, "a//b"); err == nil {
 		t.Error("resolve 空段路径应报错")
+	}
+	// resolve ".." 拒绝
+	if _, err := resolve(root, "a/../b"); err == nil {
+		t.Error("resolve .. 路径应报错")
 	}
 	// resolve 成功路径
 	got, err := resolve(root, "scripts/self/demo/index.js")
@@ -263,32 +303,32 @@ func Test非法输入返回错误不Panic(t *testing.T) {
 	}
 
 	// 路径逃逸：id 含 .. 段
-	if err := WriteSource(root, "..", registry.TypeSelf, "c"); err == nil {
+	if err := f.WriteSource("..", registry.TypeSelf, "c"); err == nil {
 		t.Error("id 越界应报错")
 	}
-	if err := WriteSource(root, "../../evil", registry.TypeSelf, "c"); err == nil {
+	if err := f.WriteSource("../../evil", registry.TypeSelf, "c"); err == nil {
 		t.Error("id 越界应报错")
 	}
-	if err := RemoveSource(root, "..", registry.TypeSelf); err == nil {
+	if err := f.RemoveSource("..", registry.TypeSelf); err == nil {
 		t.Error("越界移除应报错")
 	}
 	notExist(t, filepath.Join(root, "scripts", "index.js"), "越界文件")
 	notExist(t, filepath.Join(root, "..", "evil"), "逃逸文件")
 
 	// 数据根本身是文件 → 创建目录失败，错误返回而非 panic
-	f := filepath.Join(t.TempDir(), "not-a-dir")
-	if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
+	fz := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(fz, []byte("x"), 0o644); err != nil {
 		t.Fatalf("准备夹具失败: %v", err)
 	}
-	if err := WriteSource(f, "x", registry.TypeSelf, "c"); err == nil {
+	if err := (FS{Root: fz}).WriteSource("x", registry.TypeSelf, "c"); err == nil {
 		t.Error("数据根为文件时应报错")
 	}
 
 	// 读取不存在的文件 → error
-	if _, err := ReadSource(root, "never", registry.TypeSelf); err == nil {
+	if _, err := f.ReadSource("never", registry.TypeSelf); err == nil {
 		t.Error("读取不存在的源码应报错")
 	}
-	if _, err := ReadDist(root, "never"); err == nil {
+	if _, err := f.ReadDist("never"); err == nil {
 		t.Error("读取不存在的 dist 应报错")
 	}
 }

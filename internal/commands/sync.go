@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/acg-q/userscript-console/internal/registry"
-	"github.com/acg-q/userscript-console/internal/script"
 	"github.com/acg-q/userscript-console/internal/sources"
 )
 
@@ -100,7 +99,7 @@ func runSyncOne(env *Env, r *registry.Registry, key string) (Result, error) {
 		return Result{}, err
 	}
 
-	if err := script.WriteSource(env.Root, s.ID, s.Type, src.Code); err != nil {
+	if err := env.FS().WriteSource(s.ID, s.Type, src.Code); err != nil {
 		return Result{}, fmt.Errorf("写入脚本文件失败: %w", err)
 	}
 	if err := writeDist(env, s, src.Code); err != nil {
@@ -166,7 +165,7 @@ func runSyncAll(env *Env, r *registry.Registry) (Result, error) {
 
 	writeErrs := 0
 	for i, s := range updatedEntries {
-		if err := script.WriteSource(env.Root, s.ID, s.Type, syncedSrc[i].Code); err != nil {
+		if err := env.FS().WriteSource(s.ID, s.Type, syncedSrc[i].Code); err != nil {
 			writeErrs++
 			continue
 		}

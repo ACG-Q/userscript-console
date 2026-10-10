@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/acg-q/userscript-console/internal/registry"
-	"github.com/acg-q/userscript-console/internal/script"
 )
 
 // fakeDoer 模拟 HTTP 请求，用于测试 fetchSource。
@@ -317,7 +316,7 @@ func TestBuildFull(t *testing.T) {
 // @name        测试脚本
 // @version     1.0.0
 // ==/UserScript==`
-	if err := script.WriteSource(env.Root, "self01", registry.TypeSelf, testCode); err != nil {
+	if err := env.FS().WriteSource("self01", registry.TypeSelf, testCode); err != nil {
 		t.Fatalf("创建测试文件失败: %v", err)
 	}
 
@@ -465,7 +464,7 @@ func TestSyncAllWritesRegistry(t *testing.T) {
 		t.Errorf("Author 应随同步更新, got %q", got.Author)
 	}
 
-	code, err := script.ReadSource(env.Root, "sync01", registry.TypeSynced)
+	code, err := env.FS().ReadSource("sync01", registry.TypeSynced)
 	if err != nil {
 		t.Fatalf("读取同步源码失败: %v", err)
 	}
@@ -797,16 +796,16 @@ func TestSyncWritesDist(t *testing.T) {
 func TestRmRemovesSourceAndDistForBothTypes(t *testing.T) {
 	env, _ := buildTestEnvWithFake(t)
 
-	if err := script.WriteSource(env.Root, "self01", registry.TypeSelf, "// self"); err != nil {
+	if err := env.FS().WriteSource("self01", registry.TypeSelf, "// self"); err != nil {
 		t.Fatal(err)
 	}
-	if err := script.WriteSource(env.Root, "sync01", registry.TypeSynced, "// synced"); err != nil {
+	if err := env.FS().WriteSource("sync01", registry.TypeSynced, "// synced"); err != nil {
 		t.Fatal(err)
 	}
-	if err := script.WriteDist(env.Root, "self01", "// self"); err != nil {
+	if err := env.FS().WriteDist("self01", "// self"); err != nil {
 		t.Fatal(err)
 	}
-	if err := script.WriteDist(env.Root, "sync01", "// synced"); err != nil {
+	if err := env.FS().WriteDist("sync01", "// synced"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -815,9 +814,9 @@ func TestRmRemovesSourceAndDistForBothTypes(t *testing.T) {
 		return !os.IsNotExist(err)
 	}
 	srcPath := func(key string) string {
-		rel := script.SelfSourcePath(key)
+		rel := env.FS().SelfSourcePath(key)
 		if key == "sync01" {
-			rel = script.SyncedSourcePath(key)
+			rel = env.FS().SyncedSourcePath(key)
 		}
 		return filepath.Join(env.Root, filepath.FromSlash(rel))
 	}
@@ -828,7 +827,7 @@ func TestRmRemovesSourceAndDistForBothTypes(t *testing.T) {
 		if exists(srcPath(key)) {
 			t.Errorf("%s 源码应已删除", key)
 		}
-		if exists(filepath.Join(env.Root, filepath.FromSlash(script.DistPath(key)))) {
+		if exists(filepath.Join(env.Root, filepath.FromSlash(env.FS().DistPath(key)))) {
 			t.Errorf("%s dist 应已删除", key)
 		}
 	}

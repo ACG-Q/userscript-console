@@ -19,96 +19,107 @@ import (
 // 一切错误以 error 返回，不 panic。
 
 // WriteSource 原子写入脚本源码：
-// self → scripts/self/<id>/index.js；synced → scripts/synced/<id>/script.user.js。
+// self → <scripts>/self/<id>/index.js；synced → <scripts>/synced/<id>/script.user.js。
 // scriptType 非法、id 含非法路径段 → error。
-func WriteSource(root, id, scriptType, content string) error {
-	rel, err := sourceRelPath(id, scriptType)
+func (f FS) WriteSource(id, scriptType, content string) error {
+	rel, err := f.sourceRelPath(id, scriptType)
 	if err != nil {
 		return err
 	}
-	return writeFile(root, rel, content)
+	return writeFile(f.Root, rel, content)
 }
 
 // ReadSource 读取脚本源码（路径规则同 WriteSource）。
-func ReadSource(root, id, scriptType string) (string, error) {
-	rel, err := sourceRelPath(id, scriptType)
+func (f FS) ReadSource(id, scriptType string) (string, error) {
+	rel, err := f.sourceRelPath(id, scriptType)
 	if err != nil {
 		return "", err
 	}
-	return readFile(root, rel)
+	return readFile(f.Root, rel)
 }
 
-// WriteDist 原子写入分发产物 dist/<id>.user.js。
-func WriteDist(root, id, content string) error {
-	return writeFile(root, DistPath(id), content)
+// WriteDist 原子写入分发产物 <dist>/<id>.user.js。
+func (f FS) WriteDist(id, content string) error {
+	return writeFile(f.Root, f.DistPath(id), content)
 }
 
-// ReadDist 读取分发产物 dist/<id>.user.js。
-func ReadDist(root, id string) (string, error) {
-	return readFile(root, DistPath(id))
+// ReadDist 读取分发产物 <dist>/<id>.user.js。
+func (f FS) ReadDist(id string) (string, error) {
+	return readFile(f.Root, f.DistPath(id))
 }
 
-// WriteDoc 写自写脚本文档 scripts/self/<id>/README.md。
+// WriteDoc 写自写脚本文档 <scripts>/self/<id>/README.md。
 // synced 脚本无文档（DocPath 返回空串）→ error：调用方须先以类型/DocPath 判断，勿对 synced 调用。
-func WriteDoc(root, id, content string) error {
-	rel := DocPath(id)
+func (f FS) WriteDoc(id, content string) error {
+	rel := f.DocPath(id)
 	if rel == "" {
 		return errors.New("script: synced 脚本无文档文件（调用方须先以类型或 DocPath 判断）")
 	}
-	return writeFile(root, rel, content)
+	return writeFile(f.Root, rel, content)
 }
 
 // RemoveSource 移除脚本源码（连同其空目录）；文件/目录不存在 → nil（幂等）。
 // 目录非空（如自写脚本的 README 仍在）则保留目录，不连带删除文档。
-func RemoveSource(root, id, scriptType string) error {
-	rel, err := sourceRelPath(id, scriptType)
+func (f FS) RemoveSource(id, scriptType string) error {
+	rel, err := f.sourceRelPath(id, scriptType)
 	if err != nil {
 		return err
 	}
-	return removeFile(root, rel, true)
+	return removeFile(f.Root, rel, true)
 }
 
 // RemoveDist 移除分发产物；不存在 → nil（幂等）。
-// dist/ 为多脚本共享目录，绝不回收 dist/ 本身。
-func RemoveDist(root, id string) error {
-	return removeFile(root, DistPath(id), false)
+// <dist> 为多脚本共享目录，绝不回收 dist/ 本身。
+func (f FS) RemoveDist(id string) error {
+	return removeFile(f.Root, f.DistPath(id), false)
 }
 
 // RemoveDoc 移除自写脚本文档；synced（DocPath 空串）与文件不存在均 → nil（幂等，
 // /rm 对 synced 脚本无条件调用不致失败）。目录清空后尽力回收。
-func RemoveDoc(root, id string) error {
-	rel := DocPath(id)
+func (f FS) RemoveDoc(id string) error {
+	rel := f.DocPath(id)
 	if rel == "" {
 		return nil
 	}
-	return removeFile(root, rel, true)
+	return removeFile(f.Root, rel, true)
 }
 
 // sourceRelPath 按脚本类型给出源码相对路径；未知类型 → error。
-func sourceRelPath(id, scriptType string) (string, error) {
+func (f FS) sourceRelPath(id, scriptType string) (string, error) {
 	switch scriptType {
 	case registry.TypeSelf:
-		return SelfSourcePath(id), nil
+		return f.SelfSourcePath(id), nil
 	case registry.TypeSynced:
-		return SyncedSourcePath(id), nil
+		return f.SyncedSourcePath(id), nil
 	default:
 		return "", fmt.Errorf("script: 未知脚本类型 %q（只允许 %s|%s）", scriptType, registry.TypeSelf, registry.TypeSynced)
 	}
 }
 
-// resolve 把 '/' 分隔的相对路径拼到数据根之下，并拒绝非法段（空段、"."、".."、反斜杠），
-// 防御畸形 id 把写入/删除带出 --root；最终路径越出数据根同样拒绝（错误返回，不 panic）。
+// resolve 把 '/' 分隔的相对路径拼到数据根之下，并拒绝非法段（"."、".."、反斜杠；相对路径还拒绝空段），
+// 防御畸形 id 把写入/删除带出 --root；相对路径的最终结果越出数据根同样拒绝（错误返回，不 panic）。
+// 绝对路径（设计 §2 路径规则：自定义 scripts/dist 可为绝对值）经段校验后原样使用。
 func resolve(root, rel string) (string, error) {
 	if strings.Contains(rel, `\`) {
 		return "", fmt.Errorf("script: 非法相对路径 %q（不允许反斜杠）", rel)
 	}
-	for _, seg := range strings.Split(rel, "/") {
-		if seg == "" || seg == "." || seg == ".." {
+	segs := strings.Split(rel, "/")
+	for _, seg := range segs {
+		if seg == ".." || seg == "." {
 			return "", fmt.Errorf("script: 非法相对路径 %q（含非法段 %q）", rel, seg)
 		}
 	}
-	p := filepath.Join(root, filepath.FromSlash(rel))
-	// 双保险：即便上游路径规则变化，最终路径也不得越出数据根。
+	fromSlash := filepath.FromSlash(rel)
+	if filepath.IsAbs(fromSlash) {
+		return fromSlash, nil
+	}
+	for _, seg := range segs {
+		if seg == "" {
+			return "", fmt.Errorf("script: 非法相对路径 %q（含空段）", rel)
+		}
+	}
+	p := filepath.Join(root, fromSlash)
+	// 双保险：即便上游路径规则变化，相对结果也不得越出数据根。
 	if r, err := filepath.Rel(root, p); err != nil ||
 		r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("script: 路径 %q 越出数据根 %q", rel, root)

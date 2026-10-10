@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/acg-q/userscript-console/internal/github"
+	"github.com/acg-q/userscript-console/internal/layout"
 	"github.com/acg-q/userscript-console/internal/registry"
 	"github.com/acg-q/userscript-console/internal/script"
 	"github.com/acg-q/userscript-console/internal/sources"
@@ -55,13 +56,20 @@ type Env struct {
 	RepoName        string // 仓库名，格式 owner/repo；用于 GitHub API
 	CommentUser     string
 	IssueNumber     int
-	PagesBase       string // https://<owner>.github.io/<repo> —— downloadURL/updateURL 前缀
-	AuthorName      string // 自写脚本头默认作者
-	AuthorNamespace string // 自写脚本头默认命名空间
+	PagesBase       string        // https://<owner>.github.io/<repo> —— downloadURL/updateURL 前缀
+	AuthorName      string        // 自写脚本头默认作者
+	AuthorNamespace string        // 自写脚本头默认命名空间
+	Paths           layout.Layout // 数据布局（registry/scripts/dist/archive）；零值 → Defaults（设计 §2 D5/D6）
 	Doer            sources.Doer
 	GHClient        *github.Client // GitHub GraphQL 客户端；nil → 跳过 GitHub 操作
 	Site            SiteBuilder    // 整站生成器；nil → /build 只产出 dist/ 脚本副本
 	Now             time.Time      // I-7 可注入；零值 → time.Now()
+}
+
+// FS 返回带数据根与生效布局的脚本路径视图。
+// Paths 零值/单项空值由 layout 与 script.FS 各自兜底默认，既有 Env{} 构造行为不变。
+func (e *Env) FS() script.FS {
+	return script.FS{Root: e.Root, Scripts: e.Paths.Scripts, Dist: e.Paths.Dist}
 }
 
 // Result 回帖结果。
@@ -249,7 +257,7 @@ func distURL(env *Env, id string) string {
 func writeDist(env *Env, s *registry.Script, srcCode string) error {
 	code := script.SyncVersion(srcCode, s.Version)
 	code = script.EnsureURLs(code, distURL(env, s.ID), distURL(env, s.ID))
-	return script.WriteDist(env.Root, s.ID, code)
+	return env.FS().WriteDist(s.ID, code)
 }
 
 // isURL 判定参数是否是来源 URL（http/https 前缀）。

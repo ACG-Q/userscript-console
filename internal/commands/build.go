@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/acg-q/userscript-console/internal/script"
 )
 
 func init() {
@@ -44,7 +42,7 @@ func runBuild(env *Env, args string, codeBlocks []string) (Result, error) {
 			continue
 		}
 
-		srcCode, err := script.ReadSource(env.Root, s.ID, s.Type)
+		srcCode, err := env.FS().ReadSource(s.ID, s.Type)
 		if err != nil {
 			errs++
 			continue

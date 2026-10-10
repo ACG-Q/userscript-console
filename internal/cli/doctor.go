@@ -80,7 +80,7 @@ func doctorProblems(root string) []string {
 	for _, s := range reg.Scripts {
 		// 2/3. 源码文件存在性（按软删状态双向校验）
 		srcPath := scriptSourcePath(root, s)
-		distPath := filepath.Join(root, script.DistPath(s.ID))
+		distPath := filepath.Join(root, script.FS{}.DistPath(s.ID))
 		srcExists := fileExists(srcPath)
 		distExists := fileExists(distPath)
 

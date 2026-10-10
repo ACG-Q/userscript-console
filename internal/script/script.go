@@ -228,29 +228,52 @@ func PrependChangelog(list []registry.ChangelogEntry, version, date, note string
 
 // ── 路径（相对 --root，SPEC-DATA §2.1；恒用 '/' 分隔，跨平台契约一致） ──
 
-// SelfSourcePath 自写脚本源码路径：scripts/self/<id>/index.js。
-func SelfSourcePath(id string) string {
-	return "scripts/self/" + id + "/index.js"
+// FS 是带数据根与可配置脚本/分发目录的路径视图（设计 §2.1 D5/D6）。
+// Scripts/Dist 零值兜底 "scripts"/"dist"，与 layout.Defaults 一致，
+// 保证零值 FS{Root: r} 与历史硬编码行为完全等价。
+type FS struct {
+	Root    string // 数据根（--root）
+	Scripts string // 脚本目录（相对 root 或绝对），零值 → "scripts"
+	Dist    string // 分发目录（相对 root 或绝对），零值 → "dist"
 }
 
-// SyncedSourcePath 同步脚本源码路径：scripts/synced/<id>/script.user.js。
-func SyncedSourcePath(id string) string {
-	return "scripts/synced/" + id + "/script.user.js"
+func (f FS) scripts() string {
+	if f.Scripts == "" {
+		return "scripts"
+	}
+	return f.Scripts
 }
 
-// DistPath 分发产物路径：dist/<id>.user.js。
-func DistPath(id string) string {
-	return "dist/" + id + ".user.js"
+func (f FS) dist() string {
+	if f.Dist == "" {
+		return "dist"
+	}
+	return f.Dist
 }
 
-// DocPath 自写脚本文档路径：scripts/self/<id>/README.md。
+// SelfSourcePath 自写脚本源码路径：<scripts>/self/<id>/index.js。
+func (f FS) SelfSourcePath(id string) string {
+	return f.scripts() + "/self/" + id + "/index.js"
+}
+
+// SyncedSourcePath 同步脚本源码路径：<scripts>/synced/<id>/script.user.js。
+func (f FS) SyncedSourcePath(id string) string {
+	return f.scripts() + "/synced/" + id + "/script.user.js"
+}
+
+// DistPath 分发产物路径：<dist>/<id>.user.js。
+func (f FS) DistPath(id string) string {
+	return f.dist() + "/" + id + ".user.js"
+}
+
+// DocPath 自写脚本文档路径：<scripts>/self/<id>/README.md。
 // synced 脚本无文档文件 → 返回空串（synced id = registry.SourceID = URL MD5 前 12 位小写十六进制，
 // 依此形态识别；调用方另有 registry.Script.Type 可权威判断，DocPath 仅用于快速取路径）。
-func DocPath(id string) string {
+func (f FS) DocPath(id string) string {
 	if isSyncedID(id) {
 		return ""
 	}
-	return "scripts/self/" + id + "/README.md"
+	return f.scripts() + "/self/" + id + "/README.md"
 }
 
 // isSyncedID 判断 id 是否为 synced 形态（12 位小写十六进制，见 registry.SourceID）。
