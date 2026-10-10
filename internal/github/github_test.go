@@ -300,13 +300,14 @@ func Test固定查询文档回归锁(t *testing.T) {
 		}
 	}
 	must := map[string][]string{
-		"LIST_QUERY":              {"totalCount", "updatedAt", "pageInfo", "hasNextPage", "orderBy"},
-		"PANEL_QUERY":             {"comments(first:", "after: $cursor"},
-		"CREATE_MUTATION":         {"createIssue(input:"},
-		"UPDATE_MUTATION":         {"updateIssue(input:"},
-		"CLOSE_MUTATION":          {"closeIssue(input:"},
-		"REOPEN_MUTATION":         {"reopenIssue(input:"},
-		"DELETE_COMMENT_MUTATION": {"deleteIssueComment(input:"},
+		"LIST_QUERY":                  {"totalCount", "updatedAt", "pageInfo", "hasNextPage", "orderBy"},
+		"PANEL_QUERY":                 {"comments(first:", "after: $cursor"},
+		"CREATE_MUTATION":             {"createIssue(input:"},
+		"UPDATE_MUTATION":             {"updateIssue(input:"},
+		"CLOSE_MUTATION":              {"closeIssue(input:"},
+		"REOPEN_MUTATION":             {"reopenIssue(input:"},
+		"DELETE_COMMENT_MUTATION":     {"deleteIssueComment(input:"},
+		"DISCUSSION_CATEGORIES_QUERY": {"discussionCategories(first: 25)", "isDefault", "nodes { id name slug isDefault }"},
 	}
 	for name, subs := range must {
 		for _, s := range subs {
@@ -525,13 +526,16 @@ func TestDiscussion系列(t *testing.T) {
 	t.Run("分类列表", func(t *testing.T) {
 		d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{
 			"repository": map[string]any{"discussionCategories": map[string]any{
-				"nodes": []any{map[string]any{"id": "DC_1", "name": "版本", "slug": "releases"}},
+				"nodes": []any{map[string]any{"id": "DC_1", "name": "版本", "slug": "releases", "isDefault": true}},
 			}},
 		}), nil}}}
 		c := newTestClient(t, d)
 		cats, err := c.DiscussionCategories(context.Background())
 		if err != nil || len(cats) != 1 || cats[0].NodeID != "DC_1" {
 			t.Fatalf("cats=%v err=%v", cats, err)
+		}
+		if !cats[0].IsDefault {
+			t.Error("IsDefault 应解码为 true")
 		}
 	})
 	t.Run("发布版本帖", func(t *testing.T) {

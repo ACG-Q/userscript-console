@@ -30,9 +30,10 @@ type Comment struct {
 }
 
 type Category struct {
-	NodeID string
-	Name   string
-	Slug   string
+	NodeID    string
+	Name      string
+	Slug      string
+	IsDefault bool
 }
 
 type Discussion struct {
@@ -106,9 +107,10 @@ type gqlPageInfo struct {
 }
 
 type gqlCategory struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Slug string `json:"slug"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Slug      string `json:"slug"`
+	IsDefault bool   `json:"isDefault"`
 }
 
 // ── Issue 系列 ─────────────────────────────────────────────
@@ -357,7 +359,7 @@ func (c *Client) DiscussionCategories(ctx context.Context) ([]Category, error) {
 	}
 	cats := make([]Category, 0, len(nodes))
 	for _, n := range nodes {
-		cats = append(cats, Category{NodeID: n.ID, Name: n.Name, Slug: n.Slug})
+		cats = append(cats, Category{NodeID: n.ID, Name: n.Name, Slug: n.Slug, IsDefault: n.IsDefault})
 	}
 	return cats, nil
 }
