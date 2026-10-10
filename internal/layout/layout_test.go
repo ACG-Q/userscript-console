@@ -15,7 +15,7 @@ func TestDefaultsMatchLegacyHardcoded(t *testing.T) {
 
 func TestZeroValueLayoutBehavesLikeDefaults(t *testing.T) {
 	var z Layout
-	root := filepath.Join("data")
+	root := "data"
 	if got := z.RegistryPath(root); got != filepath.Join(root, "registry.json") {
 		t.Errorf("零值 RegistryPath = %q", got)
 	}

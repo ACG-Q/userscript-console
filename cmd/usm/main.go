@@ -352,7 +352,8 @@ func parseBoolWord(v string) (bool, error) {
 // → POST **执行结果：** + 正文；回帖失败只记 warning，不改退出码。
 // 未授权只删评不回帖（emitCommandResult 的 authorized=false 分支不发帖）。
 func emitCommandResult(res commands.Result, authorized bool, flags cli.RunCommandFlags,
-	issueNum int, postReply bool, ghc *github.Client) int {
+	issueNum int, postReply bool, ghc *github.Client,
+) int {
 	if postReply && authorized && res.Text != "" && ghc != nil {
 		body := "**执行结果：**\n" + res.Text
 		if err := ghc.CreateIssueComment(context.Background(), issueNum, body); err != nil {

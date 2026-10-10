@@ -11,7 +11,7 @@ import (
 // 各测试需要这些值时用 t.Setenv 自行注入（stubGH 指向 httptest）。
 func TestMain(m *testing.M) {
 	for _, k := range []string{"GITHUB_TOKEN", "GITHUB_REPOSITORY", "POST_REPLY", "COMMENT_ID"} {
-		os.Unsetenv(k)
+		_ = os.Unsetenv(k)
 	}
 	os.Exit(m.Run())
 }
