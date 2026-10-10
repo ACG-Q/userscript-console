@@ -326,17 +326,27 @@ func emitResultAuth(res commands.Result, authorized bool, asJSON bool) int {
 
 func buildRun(args []string) int {
 	root := parseRootFlag(args)
+	// T10 起改为 parseLayout(args)（flag > env > 默认）；本任务先接 env 层。
+	lay := layout.FromEnv()
 	pagesBase := cli.EnvOr("PAGES_BASE", "")
 	now := time.Now()
 	gh := newGitHubClient()
 	// 只在客户端真实存在时赋值：把 nil 的 *github.Client 塞进接口会让
 	// siteBuilder 的判空永远为真（接口非 nil），进而 nil-deref。
-	site := &siteBuilder{root: root, pagesBase: pagesBase, version: buildinfo.Version(), now: now}
+	site := &siteBuilder{
+		root:        root,
+		pagesBase:   pagesBase,
+		version:     buildinfo.Version(),
+		distDir:     lay.DistPath(root),
+		archivePath: lay.ArchivePath(root),
+		now:         now,
+	}
 	if gh != nil {
 		site.gh = gh
 	}
 	env := &commands.Env{
 		Root:      root,
+		Paths:     lay,
 		PagesBase: pagesBase,
 		GHClient:  gh,
 		Site:      site,

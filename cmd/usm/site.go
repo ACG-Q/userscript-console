@@ -28,11 +28,21 @@ type siteGH interface {
 }
 
 type siteBuilder struct {
-	root      string
-	pagesBase string
-	version   string // usm 版本（页脚/meta 展示），空→pages normalize 兜底 "dev"
-	now       time.Time
-	gh        siteGH // nil → 跳过 GitHub 抓取（降级渲染，W1 由 pages.Build 统一记）
+	root        string
+	pagesBase   string
+	version     string // usm 版本（页脚/meta 展示），空→pages normalize 兜底 "dev"
+	distDir     string // 站点产物目录（绝对路径，跟随 --dist-dir）；空→<root>/dist
+	archivePath string // 命令归档文件（绝对路径，跟随 --archive-path）；空→pages 按 Out 派生
+	now         time.Time
+	gh          siteGH // nil → 跳过 GitHub 抓取（降级渲染，W1 由 pages.Build 统一记）
+}
+
+// outDir 返回站点产物目录：显式 distDir 优先，零值兜底 <root>/dist。
+func (b *siteBuilder) outDir() string {
+	if b.distDir != "" {
+		return b.distDir
+	}
+	return filepath.Join(b.root, "dist")
 }
 
 // Build 实现 commands.SiteBuilder。
@@ -40,16 +50,17 @@ func (b *siteBuilder) Build(reg *registry.Registry) (int, bool, []string, error)
 	data, warnings := b.fetchData(reg)
 
 	out, err := pages.Build(reg, pages.Options{
-		Out:       filepath.Join(b.root, "dist"),
-		PagesBase: b.pagesBase,
-		Version:   b.version,
-		Now:       b.now,
+		Out:         b.outDir(),
+		PagesBase:   b.pagesBase,
+		Version:     b.version,
+		ArchivePath: b.archivePath,
+		Now:         b.now,
 	}, data)
 	if err != nil {
 		return 0, false, nil, fmt.Errorf("渲染站点: %w", err)
 	}
 
-	changed, err := writeSite(b.root, out)
+	changed, err := writeSite(b.outDir(), out)
 	if err != nil {
 		return 0, false, nil, err
 	}
@@ -114,15 +125,16 @@ func hasDiscussions(reg *registry.Registry) bool {
 	return false
 }
 
-// 站点产物相对数据根的路径契约（PLAN.md C3-15、.gitignore 的部署清单）。
+// 站点产物相对输出目录的路径契约（PLAN.md C3-15、.gitignore 的部署清单）。
+// 输出目录本身跟随 --dist-dir（siteBuilder.outDir），此处只描述其内部结构。
 const (
-	siteIndexRel      = "dist/index.html"
-	siteScriptsJSON   = "dist/scripts.json"
-	siteDetailDir     = "dist/scripts"
-	siteCommandsDir   = "dist/commands"
-	siteDocsDir       = "dist/docs"
-	siteWarningsRel   = "dist/build-warnings.txt"
-	siteCommandsIndex = "dist/commands/index.html"
+	siteIndexFile     = "index.html"
+	siteScriptsJSON   = "scripts.json"
+	siteDetailDir     = "scripts"
+	siteCommandsDir   = "commands"
+	siteDocsDir       = "docs"
+	siteWarningsFile  = "build-warnings.txt"
+	siteCommandsIndex = "commands/index.html"
 )
 
 // validDocName 文档输出键契约：<slug>.html 或恰好一级 <subdir>/<slug>.html
@@ -144,14 +156,14 @@ func validDocName(name string) bool {
 	return parts[1] != "" && parts[1] == path.Base(parts[1])
 }
 
-// writeSite 落盘整站产物：内容有差异才写（幂等 → 相同输入第二次构建 changed=false），
+// writeSite 落盘整站产物到输出目录 distDir：内容有差异才写（幂等 → 相同输入第二次构建 changed=false），
 // 并清掉本轮未再生成的陈旧页面（否则删除脚本后详情页仍可访问）。
-func writeSite(root string, out pages.Outcome) (bool, error) {
+func writeSite(distDir string, out pages.Outcome) (bool, error) {
 	changed := false
 	keep := map[string]struct{}{}
 
 	write := func(rel, content string) error {
-		path := filepath.Join(root, filepath.FromSlash(rel))
+		path := filepath.Join(distDir, filepath.FromSlash(rel))
 		if cur, err := os.ReadFile(path); err == nil && string(cur) == content {
 			keep[path] = struct{}{}
 			return nil
@@ -167,7 +179,7 @@ func writeSite(root string, out pages.Outcome) (bool, error) {
 		return nil
 	}
 
-	if err := write(siteIndexRel, out.IndexHTML); err != nil {
+	if err := write(siteIndexFile, out.IndexHTML); err != nil {
 		return false, err
 	}
 	if err := write(siteScriptsJSON, out.ScriptsJSON); err != nil {
@@ -201,12 +213,12 @@ func writeSite(root string, out pages.Outcome) (bool, error) {
 			return false, err
 		}
 	}
-	if err := write(siteWarningsRel, strings.Join(out.BuildWarnings, "\n")); err != nil {
+	if err := write(siteWarningsFile, strings.Join(out.BuildWarnings, "\n")); err != nil {
 		return false, err
 	}
 
 	for _, dir := range []string{siteDetailDir, siteCommandsDir, siteDocsDir} {
-		stale, err := staleSiteFiles(root, dir, keep)
+		stale, err := staleSiteFiles(distDir, dir, keep)
 		if err != nil {
 			return changed, err
 		}
@@ -222,10 +234,10 @@ func writeSite(root string, out pages.Outcome) (bool, error) {
 }
 
 // staleSiteFiles 列出 dir 下本轮未生成、且属于站点产物形态的陈旧文件。
-// 只认 .html：dist/ 根另有 .user.js 分发产物，不能误伤。
-// 递归子目录：dist/docs/commands/ 的陈旧页同样要清。
-func staleSiteFiles(root, dir string, keep map[string]struct{}) ([]string, error) {
-	base := filepath.Join(root, dir)
+// 只认 .html：输出目录根另有 .user.js 分发产物，不能误伤。
+// 递归子目录：docs/commands/ 的陈旧页同样要清。
+func staleSiteFiles(distDir, dir string, keep map[string]struct{}) ([]string, error) {
+	base := filepath.Join(distDir, dir)
 	if _, err := os.Stat(base); err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil

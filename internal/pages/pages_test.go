@@ -80,6 +80,15 @@ func TestNormalizeOptions(t *testing.T) {
 	if opts.CommandsPerPage != 5 {
 		t.Errorf("CommandsPerPage 默认值错误: %d", opts.CommandsPerPage)
 	}
+	if want := filepath.Join("archive", "commands.json"); opts.ArchivePath != want {
+		t.Errorf("ArchivePath 默认应为 <Out 父目录>/archive/commands.json, got %q want %q", opts.ArchivePath, want)
+	}
+
+	custom := Options{Out: "out", ArchivePath: "arch/cmds.json"}
+	custom.normalize()
+	if custom.ArchivePath != "arch/cmds.json" {
+		t.Errorf("显式 ArchivePath 不应被覆盖, got %q", custom.ArchivePath)
+	}
 }
 
 func TestRenderMarkdown(t *testing.T) {

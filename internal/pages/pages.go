@@ -44,12 +44,16 @@ type Options struct {
 	CommandsPerPage int    // 命令分页条数，≤0→5
 	PagesBase       string // 站点基址，如 "https://owner.github.io/repo"
 	Version         string // usm 版本（页脚/meta 展示），空→"dev"
+	ArchivePath     string // 命令归档文件，空→<Out 父目录>/archive/commands.json（设计 §2 D6）
 	Now             time.Time
 }
 
 func (o *Options) normalize() {
 	if o.Out == "" {
 		o.Out = "dist"
+	}
+	if o.ArchivePath == "" {
+		o.ArchivePath = filepath.Join(filepath.Dir(filepath.Clean(o.Out)), "archive", "commands.json")
 	}
 	if o.Batch <= 0 {
 		o.Batch = 10
@@ -782,7 +786,8 @@ func (r *renderer) renderDetail(s registry.Script, opts Options, data Data) (str
 // build_command_pages），每页 opts.CommandsPerPage 组；空归档也产空态 page-1；
 // index 为 meta-refresh。
 func (r *renderer) renderCommands(opts Options) (map[int]string, string, error) {
-	archivePath := filepath.Join(filepath.Dir(filepath.Clean(opts.Out)), "archive", "commands.json")
+	opts.normalize() // 直接调用方可能未归一（测试/内部调用），与 Build 主路径同待遇
+	archivePath := opts.ArchivePath
 
 	var groups []commandGroup
 	data, err := os.ReadFile(archivePath)

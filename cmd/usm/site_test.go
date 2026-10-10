@@ -145,6 +145,34 @@ func TestSiteBuilderBuildWithGH(t *testing.T) {
 	}
 }
 
+// TestSiteBuilder自定义输出目录 distDir 非空时整站产物落在自定义目录，默认 dist/ 不被写入（设计 §2 D6）。
+func TestSiteBuilder自定义输出目录(t *testing.T) {
+	root := t.TempDir()
+	b := &siteBuilder{
+		root:      root,
+		pagesBase: "https://test.github.io/repo",
+		distDir:   filepath.Join(root, "cdn"),
+		now:       time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC),
+	}
+
+	pagesCount, changed, _, err := b.Build(siteTestRegistry())
+	if err != nil {
+		t.Fatalf("Build 失败: %v", err)
+	}
+	if pagesCount == 0 {
+		t.Error("页面数应 > 0")
+	}
+	if !changed {
+		t.Error("首次构建应有落盘变更")
+	}
+	if _, err := os.Stat(filepath.Join(root, "cdn", "index.html")); err != nil {
+		t.Errorf("应写出自定义目录 index.html: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "dist")); !os.IsNotExist(err) {
+		t.Errorf("默认 dist/ 不应被写入（err=%v）", err)
+	}
+}
+
 func siteOutcome() pages.Outcome {
 	return pages.Outcome{
 		IndexHTML:     "<html>index</html>",
@@ -174,7 +202,7 @@ func siteRelPaths() []string {
 func TestWriteSitePathContract(t *testing.T) {
 	root := t.TempDir()
 
-	changed, err := writeSite(root, siteOutcome())
+	changed, err := writeSite(filepath.Join(root, "dist"), siteOutcome())
 	if err != nil {
 		t.Fatalf("writeSite 失败: %v", err)
 	}
@@ -193,10 +221,10 @@ func TestWriteSiteIdempotent(t *testing.T) {
 	root := t.TempDir()
 	out := siteOutcome()
 
-	if _, err := writeSite(root, out); err != nil {
+	if _, err := writeSite(filepath.Join(root, "dist"), out); err != nil {
 		t.Fatalf("首次写盘失败: %v", err)
 	}
-	changed, err := writeSite(root, out)
+	changed, err := writeSite(filepath.Join(root, "dist"), out)
 	if err != nil {
 		t.Fatalf("第二次写盘失败: %v", err)
 	}
@@ -210,7 +238,7 @@ func TestWriteSiteIdempotent(t *testing.T) {
 func TestWriteSiteRemovesStale(t *testing.T) {
 	root := t.TempDir()
 	out := siteOutcome()
-	if _, err := writeSite(root, out); err != nil {
+	if _, err := writeSite(filepath.Join(root, "dist"), out); err != nil {
 		t.Fatalf("首次写盘失败: %v", err)
 	}
 
@@ -219,7 +247,7 @@ func TestWriteSiteRemovesStale(t *testing.T) {
 	out.CommandsIndex = ""
 	out.DocHTMLs = map[string]string{}
 
-	changed, err := writeSite(root, out)
+	changed, err := writeSite(filepath.Join(root, "dist"), out)
 	if err != nil {
 		t.Fatalf("陈旧清理失败: %v", err)
 	}
@@ -248,7 +276,7 @@ func TestWriteSiteKeepsUserScripts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := writeSite(root, siteOutcome()); err != nil {
+	if _, err := writeSite(filepath.Join(root, "dist"), siteOutcome()); err != nil {
 		t.Fatalf("writeSite 失败: %v", err)
 	}
 	if _, err := os.Stat(userJS); err != nil {
@@ -265,7 +293,7 @@ func TestWriteSiteRejectsTraversalID(t *testing.T) {
 		CommandPages: map[int]string{},
 	}
 
-	if _, err := writeSite(root, out); err == nil {
+	if _, err := writeSite(filepath.Join(root, "dist"), out); err == nil {
 		t.Fatal("含 .. 的 ID 应被拒绝")
 	}
 	if _, err := os.Stat(filepath.Join(root, "evil.html")); err == nil {
@@ -282,7 +310,7 @@ func TestWriteSiteRejectsTraversalDoc(t *testing.T) {
 		DetailHTMLs: map[string]string{},
 	}
 
-	if _, err := writeSite(root, out); err == nil {
+	if _, err := writeSite(filepath.Join(root, "dist"), out); err == nil {
 		t.Fatal("含 .. 的文档文件名应被拒绝")
 	}
 	if _, err := os.Stat(filepath.Join(root, "dist", "evil.html")); err == nil {
@@ -328,7 +356,7 @@ func TestWriteSiteAllowsDocsSubdir(t *testing.T) {
 			"commands/add.html": "<html>add</html>",
 		},
 	}
-	changed, err := writeSite(root, out)
+	changed, err := writeSite(filepath.Join(root, "dist"), out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +377,7 @@ func TestWriteSiteRejectsDeepDocsSubdir(t *testing.T) {
 		ScriptsJSON: "{}",
 		DocHTMLs:    map[string]string{"a/b/c.html": "<html>x</html>"},
 	}
-	if _, err := writeSite(root, out); err == nil {
+	if _, err := writeSite(filepath.Join(root, "dist"), out); err == nil {
 		t.Fatal("二级文档子目录应报错")
 	}
 }
@@ -362,7 +390,7 @@ func TestWriteSiteRejectsDocSubdirTraversal(t *testing.T) {
 		ScriptsJSON: "{}",
 		DocHTMLs:    map[string]string{"commands/../evil.html": "<html>x</html>"},
 	}
-	if _, err := writeSite(root, out); err == nil {
+	if _, err := writeSite(filepath.Join(root, "dist"), out); err == nil {
 		t.Fatal("含 .. 的文档键应报错")
 	}
 	if _, err := os.Stat(filepath.Join(root, "evil.html")); err == nil {
@@ -379,7 +407,7 @@ func TestWriteSiteRejectsDocPathForms(t *testing.T) {
 			ScriptsJSON: "{}",
 			DocHTMLs:    map[string]string{name: "<html>x</html>"},
 		}
-		if _, err := writeSite(root, out); err == nil {
+		if _, err := writeSite(filepath.Join(root, "dist"), out); err == nil {
 			t.Errorf("%q 应报错", name)
 		}
 	}
@@ -397,7 +425,7 @@ func TestWriteSiteRemovesStaleDocsSubdir(t *testing.T) {
 			"commands/old.html": "<html>old</html>",
 		},
 	}
-	if _, err := writeSite(root, full); err != nil {
+	if _, err := writeSite(filepath.Join(root, "dist"), full); err != nil {
 		t.Fatal(err)
 	}
 	pruned := pages.Outcome{
@@ -408,7 +436,7 @@ func TestWriteSiteRemovesStaleDocsSubdir(t *testing.T) {
 			"commands/add.html": "<html>add</html>",
 		},
 	}
-	if _, err := writeSite(root, pruned); err != nil {
+	if _, err := writeSite(filepath.Join(root, "dist"), pruned); err != nil {
 		t.Fatal(err)
 	}
 	stale := filepath.Join(root, "dist", "docs", "commands", "old.html")
