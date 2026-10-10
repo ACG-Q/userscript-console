@@ -17,7 +17,16 @@ type Env struct {
 	RepoOwner string
 	RepoName  string // owner/repo；Issue URL 需要完整仓库路径，仅 owner 会拼出 404
 	PagesBase string
+	DistSeg   string // 分发目录 URL 段（设计 §2 D5，跟随 --dist-dir）；零值 → "dist"
 	GHClient  *github.Client
+}
+
+// distSeg 返回分发目录 URL 段；零值兜底 "dist"（默认布局）。
+func (e *Env) distSeg() string {
+	if e.DistSeg == "" {
+		return "dist"
+	}
+	return e.DistSeg
 }
 
 // issueURL 生成 Issue 链接：优先 RepoName（owner/repo），退回 RepoOwner 兼容旧配置。
@@ -93,7 +102,7 @@ func EnsureIssue(ctx context.Context, env *Env, r *registry.Registry, s *registr
 		}
 	}
 
-	issueBody := BuildIssueBody(s, env.PagesBase)
+	issueBody := BuildIssueBody(s, env.PagesBase, env.distSeg())
 
 	if matched != nil {
 		if err := env.GHClient.UpdateIssue(ctx, matched.NodeID, titlePrefix+" v"+s.Version, issueBody); err != nil {
@@ -133,7 +142,8 @@ func TombstoneIssue(ctx context.Context, ghc *github.Client, nodeID string) erro
 }
 
 // BuildIssueBody 构建 Issue body（Markdown，中文）。
-func BuildIssueBody(s *registry.Script, pagesBase string) string {
+// distSeg 是分发目录 URL 段（默认 "dist"，自定义 --dist-dir 时跟随，设计 §2 D5）。
+func BuildIssueBody(s *registry.Script, pagesBase, distSeg string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "**脚本**: %s v%s\n\n", s.Name, s.Version)
 	b.WriteString("| 字段 | 值 |\n|---|---|\n")
@@ -150,7 +160,7 @@ func BuildIssueBody(s *registry.Script, pagesBase string) string {
 		fmt.Fprintf(&b, "| 来源 | [%s](%s) |\n", *s.SourceURL, *s.SourceURL)
 	}
 	if pagesBase != "" {
-		distURL := pagesBase + "/dist/" + s.ID + ".user.js"
+		distURL := pagesBase + "/" + strings.Trim(strings.ReplaceAll(distSeg, `\`, "/"), "/") + "/" + s.ID + ".user.js"
 		fmt.Fprintf(&b, "| 分发 | [%s](%s) |\n", s.ID+".user.js", distURL)
 	}
 	b.WriteString("\n---\n\n**changelog**:\n\n| 版本 | 日期 | 说明 |\n|---|---|---|\n")

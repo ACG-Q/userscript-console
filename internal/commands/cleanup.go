@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -72,7 +71,7 @@ func runCleanup(env *Env, args string, codeBlocks []string) (Result, error) {
 		return Result{}, err
 	}
 
-	archivePath := filepath.Join(env.Root, "archive", "commands.json")
+	archivePath := env.layout().ArchivePath(env.Root)
 	existing, loadErr := cleanup.Load(archivePath)
 	if loadErr != nil && !os.IsNotExist(loadErr) {
 		return Result{}, fmt.Errorf("读取归档失败: %w", loadErr)

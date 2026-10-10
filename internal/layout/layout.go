@@ -93,6 +93,9 @@ func validate(name, p string) error {
 	return nil
 }
 
+// Normalize 兜底零值字段为默认布局，供外部调用方（如 doctor）在使用字段值前收口。
+func (l Layout) Normalize() Layout { return l.normalize() }
+
 func (l Layout) normalize() Layout {
 	d := Defaults()
 	if l.Registry == "" {

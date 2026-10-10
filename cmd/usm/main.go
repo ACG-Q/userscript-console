@@ -20,6 +20,7 @@ import (
 	"github.com/acg-q/userscript-console/internal/cli"
 	"github.com/acg-q/userscript-console/internal/commands"
 	"github.com/acg-q/userscript-console/internal/github"
+	"github.com/acg-q/userscript-console/internal/layout"
 	"github.com/acg-q/userscript-console/internal/parser"
 	"github.com/acg-q/userscript-console/internal/registry"
 	"github.com/acg-q/userscript-console/internal/snapshot"
@@ -138,7 +139,8 @@ func doctorRun(args []string) int {
 	// 故 --json 时必须输出 {authorized, changed, result} 结构
 	// （cli.RunDoctor 的 {problems, ok} 结构 jq 取不到 .changed）。
 	if asJSON {
-		problems, ok := cli.Check(root)
+		// T8 先取 env 层布局；Task 10 接 --registry 等 flag 后改传 flag 解析结果。
+		problems, ok := cli.Check(root, layout.FromEnv())
 		result := "✅ doctor 检查通过"
 		if !ok {
 			result = "❌ doctor 检查未通过：\n" + strings.Join(problems, "\n")
@@ -158,7 +160,7 @@ func doctorRun(args []string) int {
 		}
 		return 0
 	}
-	return cli.RunDoctor(root, check, false)
+	return cli.RunDoctor(root, layout.FromEnv(), check, false)
 }
 
 // ── run-command ─────────────────────────────────────────────

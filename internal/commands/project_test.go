@@ -13,6 +13,7 @@ import (
 
 	"github.com/acg-q/userscript-console/internal/cleanup"
 	"github.com/acg-q/userscript-console/internal/github"
+	"github.com/acg-q/userscript-console/internal/layout"
 	"github.com/acg-q/userscript-console/internal/registry"
 )
 
@@ -206,7 +207,7 @@ func TestListDistWithFiles(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(distDir, "self02.user.js"), []byte("// test2"), 0o644)
 	_ = os.MkdirAll(filepath.Join(distDir, "subdir"), 0o755)
 
-	files, err := listDist(root)
+	files, err := listDist(root, layout.Defaults())
 	if err != nil {
 		t.Fatalf("listDist 失败: %v", err)
 	}

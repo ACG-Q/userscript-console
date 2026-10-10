@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/acg-q/userscript-console/internal/layout"
 	"github.com/acg-q/userscript-console/internal/registry"
 )
 
@@ -44,7 +45,7 @@ func buildRepo(t *testing.T) string {
 }
 
 func TestDoctor健康仓库(t *testing.T) {
-	probs := doctorProblems(buildRepo(t))
+	probs := doctorProblems(buildRepo(t), layout.Defaults())
 	if len(probs) != 0 {
 		t.Errorf("健康仓库应无问题: %v", probs)
 	}
@@ -55,7 +56,7 @@ func TestDoctorRegistry无法解析(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "registry.json"), []byte("{坏 JSON"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	probs := doctorProblems(root)
+	probs := doctorProblems(root, layout.Defaults())
 	if len(probs) != 1 || !ContainsAll(probs[0], "registry.json", "无法解析") {
 		t.Errorf("problems = %v", probs)
 	}
@@ -66,7 +67,7 @@ func TestDoctorSchema不匹配(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "registry.json"), []byte(`{"schema":99,"scripts":[]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	probs := doctorProblems(root)
+	probs := doctorProblems(root, layout.Defaults())
 	if len(probs) != 1 || !ContainsAll(probs[0], "schema=99") {
 		t.Errorf("problems = %v", probs)
 	}
@@ -78,7 +79,7 @@ func TestDoctor缺源码与状态不一致(t *testing.T) {
 	if err := os.Remove(filepath.Join(root, "scripts", "self", "self01", "index.js")); err != nil {
 		t.Fatal(err)
 	}
-	probs := doctorProblems(root)
+	probs := doctorProblems(root, layout.Defaults())
 	found := false
 	for _, p := range probs {
 		if ContainsAll(p, "self01", "缺源码文件") {
@@ -99,7 +100,7 @@ func TestDoctor缺源码与状态不一致(t *testing.T) {
 	if err := reg.Save(filepath.Join(root2, "registry.json")); err != nil {
 		t.Fatal(err)
 	}
-	probs = doctorProblems(root2)
+	probs = doctorProblems(root2, layout.Defaults())
 	var hasSrc, hasDist bool
 	for _, p := range probs {
 		if ContainsAll(p, "sync01", "仍存在源码") {
@@ -127,7 +128,7 @@ func TestDoctor已删但dist仍在(t *testing.T) {
 	if err := reg.Save(filepath.Join(root, "registry.json")); err != nil {
 		t.Fatal(err)
 	}
-	probs := doctorProblems(root)
+	probs := doctorProblems(root, layout.Defaults())
 	found := false
 	for _, p := range probs {
 		if ContainsAll(p, "self01", "条目已删而 dist 还在") {
@@ -144,7 +145,7 @@ func TestDoctor孤儿目录(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "scripts", "self", "ghost"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	probs := doctorProblems(root)
+	probs := doctorProblems(root, layout.Defaults())
 	found := false
 	for _, p := range probs {
 		if ContainsAll(p, "孤儿目录", "ghost") {
@@ -166,7 +167,7 @@ func TestDoctorArchive重复与损坏(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "commands.json"), []byte(dup), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	probs := doctorProblems(root)
+	probs := doctorProblems(root, layout.Defaults())
 	found := false
 	for _, p := range probs {
 		if ContainsAll(p, "重复 command_id", "IC_1") {
@@ -180,7 +181,7 @@ func TestDoctorArchive重复与损坏(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "commands.json"), []byte("坏"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	probs = doctorProblems(root)
+	probs = doctorProblems(root, layout.Defaults())
 	found = false
 	for _, p := range probs {
 		if ContainsAll(p, "archive/commands.json", "无法解析") {
@@ -193,18 +194,18 @@ func TestDoctorArchive重复与损坏(t *testing.T) {
 }
 
 func TestRunDoctor退出码(t *testing.T) {
-	if code := RunDoctor(buildRepo(t), true, false); code != 0 {
+	if code := RunDoctor(buildRepo(t), layout.Defaults(), true, false); code != 0 {
 		t.Errorf("健康应 0，got %d", code)
 	}
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "registry.json"), []byte("{坏"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if code := RunDoctor(root, true, false); code != 1 {
+	if code := RunDoctor(root, layout.Defaults(), true, false); code != 1 {
 		t.Errorf("--check 有问题应 1，got %d", code)
 	}
 	// 非 --check 只打印不失败
-	if code := RunDoctor(root, false, false); code != 0 {
+	if code := RunDoctor(root, layout.Defaults(), false, false); code != 0 {
 		t.Errorf("缺省应 0，got %d", code)
 	}
 }
@@ -241,7 +242,7 @@ func TestEnvInt(t *testing.T) {
 func TestRunDoctorJSONMode(t *testing.T) {
 	root := buildRepo(t)
 	// 健康仓库 + JSON → 应输出 JSON 且返回 0
-	code := RunDoctor(root, false, true)
+	code := RunDoctor(root, layout.Defaults(), false, true)
 	if code != 0 {
 		t.Errorf("健康仓库 JSON 应返回 0, got %d", code)
 	}
@@ -250,7 +251,7 @@ func TestRunDoctorJSONMode(t *testing.T) {
 // TestScriptSourcePathSelf 测试 self 类型路径。
 func TestScriptSourcePathSelf(t *testing.T) {
 	s := registry.Script{ID: "s1", Type: registry.TypeSelf}
-	got := scriptSourcePath("/root", s)
+	got := scriptSourcePath("/root", layout.Defaults(), s)
 	want := filepath.Join("/root", "scripts", "self", "s1", "index.js")
 	if got != want {
 		t.Errorf("scriptSourcePath(self) = %q, want %q", got, want)
@@ -260,7 +261,7 @@ func TestScriptSourcePathSelf(t *testing.T) {
 // TestScriptSourcePathSynced 测试 synced 类型路径。
 func TestScriptSourcePathSynced(t *testing.T) {
 	s := registry.Script{ID: "s2", Type: registry.TypeSynced}
-	got := scriptSourcePath("/root", s)
+	got := scriptSourcePath("/root", layout.Defaults(), s)
 	want := filepath.Join("/root", "scripts", "synced", "s2", "script.user.js")
 	if got != want {
 		t.Errorf("scriptSourcePath(synced) = %q, want %q", got, want)
@@ -308,7 +309,7 @@ func TestContainsAll(t *testing.T) {
 func TestDoctorMissingArchiveDir(t *testing.T) {
 	root := buildRepo(t)
 	// archive 目录不存在 → 不应报错
-	probs := doctorProblems(root)
+	probs := doctorProblems(root, layout.Defaults())
 	for _, p := range probs {
 		if strings.Contains(p, "archive") {
 			t.Errorf("不应报 archive 问题: %v", probs)
@@ -322,7 +323,7 @@ func TestDoctorOrphanSynced(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "scripts", "synced", "ghost"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	probs := doctorProblems(root)
+	probs := doctorProblems(root, layout.Defaults())
 	found := false
 	for _, p := range probs {
 		if strings.Contains(p, "synced") && strings.Contains(p, "ghost") {
@@ -347,7 +348,7 @@ func TestDoctorDeletedSyncedMissingSrc(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 确保源码文件存在 → 应报"已删仍存源码"
-	probs := doctorProblems(root)
+	probs := doctorProblems(root, layout.Defaults())
 	found := false
 	for _, p := range probs {
 		if strings.Contains(p, "sync01") && strings.Contains(p, "仍存在源码") {
@@ -372,7 +373,7 @@ func TestDoctorArchive空commandID不误报(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "commands.json"), []byte(legacy), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range doctorProblems(root) {
+	for _, p := range doctorProblems(root, layout.Defaults()) {
 		if ContainsAll(p, "重复 command_id") {
 			t.Errorf("旧归档空 command_id 不应报重复: %s", p)
 		}
@@ -385,12 +386,61 @@ func TestDoctorArchive空commandID不误报(t *testing.T) {
 		t.Fatal(err)
 	}
 	found := false
-	for _, p := range doctorProblems(root) {
+	for _, p := range doctorProblems(root, layout.Defaults()) {
 		if ContainsAll(p, "重复 command_id", "IC_1") {
 			found = true
 		}
 	}
 	if !found {
 		t.Error("非空相同 command_id 应报重复")
+	}
+}
+
+// TestDoctor自定义布局 doctor 必须读写 --registry/--scripts-dir/--dist-dir/--archive-path
+// 指定的路径，而不是历史硬编码位置（设计 §2 D6）。
+func TestDoctor自定义布局(t *testing.T) {
+	root := t.TempDir()
+	lay := layout.Layout{Registry: "reg.json", Scripts: "uscripts", Dist: "cdn", Archive: "arch/cmds.json"}
+
+	reg := &registry.Registry{
+		Schema: registry.SchemaVersion,
+		Scripts: []registry.Script{{
+			ID: "self01", Type: registry.TypeSelf, Name: "A", Version: "1.0.0", Enabled: true,
+			Match: []string{}, Grant: []string{}, Changelog: []registry.ChangelogEntry{}, Discussions: []registry.DiscussionEntry{},
+		}},
+	}
+	if err := reg.Save(lay.RegistryPath(root)); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Save(filepath.Join(root, "registry.json")); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite := func(path, content string) {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite(filepath.Join(lay.ScriptsPath(root), "self", "self01", "index.js"), "// self")
+
+	// 自定义路径齐全 → 健康（registry 在 reg.json、源码在 uscripts/）
+	if probs := doctorProblems(root, lay); len(probs) != 0 {
+		t.Errorf("自定义布局健康仓库应无问题: %v", probs)
+	}
+	// 默认布局下文件齐全也不会被误判 —— doctor 只看 lay 指定的路径
+	mustWrite(filepath.Join(root, "scripts", "self", "self01", "index.js"), "// self")
+	if probs := doctorProblems(root, layout.Defaults()); len(probs) != 0 {
+		t.Errorf("默认布局健康仓库应无问题: %v", probs)
+	}
+
+	// 源码只在默认位置、不在自定义位置 → 自定义布局必须报缺源码
+	if err := os.RemoveAll(filepath.Join(lay.ScriptsPath(root), "self", "self01")); err != nil {
+		t.Fatal(err)
+	}
+	probs := doctorProblems(root, lay)
+	if len(probs) == 0 || !ContainsAll(probs[0], "self01", "缺源码文件") {
+		t.Errorf("应报自定义路径缺源码: %v", probs)
 	}
 }

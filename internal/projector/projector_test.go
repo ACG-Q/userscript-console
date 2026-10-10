@@ -291,7 +291,7 @@ func TestBuildIssueBody(t *testing.T) {
 		Grant:       []string{"none"},
 		Changelog:   []registry.ChangelogEntry{{Version: "2.0.0", Date: "2026-01-01", Note: "更新"}},
 	}
-	body := BuildIssueBody(s, "https://test.github.io/repo")
+	body := BuildIssueBody(s, "https://test.github.io/repo", "dist")
 	if !strings.Contains(body, "MyScript v2.0.0") {
 		t.Errorf("body 应含脚本名和版本: %s", body)
 	}
@@ -303,9 +303,21 @@ func TestBuildIssueBody(t *testing.T) {
 	}
 }
 
+// TestBuildIssueBodyCustomDistSeg 自定义 --dist-dir 时分发链接跟随（设计 §2 验收）。
+func TestBuildIssueBodyCustomDistSeg(t *testing.T) {
+	s := &registry.Script{ID: "abc", Name: "X", Version: "1.0.0", Type: registry.TypeSelf, Enabled: true}
+	body := BuildIssueBody(s, "https://test.github.io/repo", "out")
+	if !strings.Contains(body, "https://test.github.io/repo/out/abc.user.js") {
+		t.Errorf("body 应含自定义 dist 链接: %s", body)
+	}
+	if strings.Contains(body, "/dist/abc.user.js") {
+		t.Errorf("body 不应含默认 /dist/ 链接: %s", body)
+	}
+}
+
 func TestBuildIssueBodyNoPagesBase(t *testing.T) {
 	s := &registry.Script{ID: "abc", Name: "X", Version: "1.0.0", Type: registry.TypeSelf, Enabled: true, Deleted: false}
-	body := BuildIssueBody(s, "")
+	body := BuildIssueBody(s, "", "dist")
 	if strings.Contains(body, "分发") {
 		t.Error("无 PagesBase 时不应含分发链接")
 	}
@@ -320,7 +332,7 @@ func TestBuildIssueBodyDeleted(t *testing.T) {
 		Enabled: false,
 		Deleted: true,
 	}
-	body := BuildIssueBody(s, "")
+	body := BuildIssueBody(s, "", "dist")
 	if !strings.Contains(body, "🗑️ 已删除") {
 		t.Errorf("已删除脚本应标记为已删除: %s", body)
 	}
@@ -335,7 +347,7 @@ func TestBuildIssueBodySynced(t *testing.T) {
 		Enabled:   true,
 		SourceURL: strPtr("https://example.com/script.user.js"),
 	}
-	body := BuildIssueBody(s, "")
+	body := BuildIssueBody(s, "", "dist")
 	if !strings.Contains(body, "synced") {
 		t.Errorf("synced 类型应包含 synced 标识: %s", body)
 	}

@@ -16,7 +16,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -71,6 +70,9 @@ type Env struct {
 func (e *Env) FS() script.FS {
 	return script.FS{Root: e.Root, Scripts: e.Paths.Scripts, Dist: e.Paths.Dist}
 }
+
+// layout 返回生效的数据布局（零值字段由 layout 各路径方法 normalize 兜底）。
+func (e *Env) layout() layout.Layout { return e.Paths }
 
 // Result 回帖结果。
 type Result struct {
@@ -193,8 +195,8 @@ func topFrames(n int) string {
 
 // ── 包内公共辅助 ────────────────────────────────────────────
 
-// regPath 数据根下 registry.json 的路径。
-func regPath(env *Env) string { return filepath.Join(env.Root, registryFileName) }
+// regPath 账本文件路径（跟随 --registry/USM_REGISTRY 布局，设计 §2 D6）。
+func regPath(env *Env) string { return env.layout().RegistryPath(env.Root) }
 
 // loadReg 读取并校验账本；任何失败都是操作型错误（上抛）。
 func loadReg(env *Env) (*registry.Registry, error) {
@@ -242,13 +244,13 @@ func dateStr(t time.Time) string { return t.UTC().Format("2006-01-02") }
 // rfc3339 UTC RFC3339 时间戳（last_synced_at 等）。
 func rfc3339(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
-// distURL 分发产物链接：PagesBase/dist/<id>.user.js（PagesBase 为空 → 空串 = 不注入）。
+// distURL 分发产物链接：PagesBase/<distSeg>/<id>.user.js（PagesBase 为空 → 空串 = 不注入）。
 func distURL(env *Env, id string) string {
 	base := strings.TrimSuffix(strings.TrimSpace(env.PagesBase), "/")
 	if base == "" {
 		return ""
 	}
-	return base + "/dist/" + id + ".user.js"
+	return base + "/" + env.layout().DistSeg() + "/" + id + ".user.js"
 }
 
 // writeDist 生成并写入分发产物：以 registry 版本同步 @version，

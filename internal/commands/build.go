@@ -3,7 +3,8 @@ package commands
 import (
 	"fmt"
 	"os"
-	"path/filepath"
+
+	"github.com/acg-q/userscript-console/internal/layout"
 )
 
 func init() {
@@ -30,7 +31,7 @@ func runBuild(env *Env, args string, codeBlocks []string) (Result, error) {
 	skipped := 0
 	errs := 0
 
-	distDir := filepath.Join(env.Root, "dist")
+	distDir := env.layout().DistPath(env.Root)
 	if err := os.MkdirAll(distDir, 0o755); err != nil {
 		return Result{}, fmt.Errorf("创建 dist 目录失败: %w", err)
 	}
@@ -80,7 +81,7 @@ func runBuild(env *Env, args string, codeBlocks []string) (Result, error) {
 		msg += fmt.Sprintf("- 站点页面: %d 个\n", sitePages)
 	}
 
-	msg += fmt.Sprintf("\n📦 站点基址: %s/dist/\n", env.PagesBase)
+	msg += fmt.Sprintf("\n📦 站点基址: %s/%s/\n", env.PagesBase, env.layout().DistSeg())
 
 	res, err := reply(built > 0 || siteChanged, "%s", msg)
 	if err != nil {
@@ -91,9 +92,9 @@ func runBuild(env *Env, args string, codeBlocks []string) (Result, error) {
 	return res, nil
 }
 
-// listDist 列出 dist/ 目录内容。
-func listDist(root string) ([]string, error) {
-	distDir := filepath.Join(root, "dist")
+// listDist 列出分发目录内容（目录跟随 --dist-dir/USM_DIST_DIR 布局）。
+func listDist(root string, lay layout.Layout) ([]string, error) {
+	distDir := lay.DistPath(root)
 	entries, err := os.ReadDir(distDir)
 	if err != nil {
 		if os.IsNotExist(err) {

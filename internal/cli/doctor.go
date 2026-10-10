@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/acg-q/userscript-console/internal/layout"
 	"github.com/acg-q/userscript-console/internal/registry"
-	"github.com/acg-q/userscript-console/internal/script"
 )
 
 // DoctorReport usm doctor --json 输出（SPEC-CLI §5）。
@@ -18,17 +18,18 @@ type DoctorReport struct {
 }
 
 // Check 汇总数据一致性检查结果，不做任何输出。
+// lay 是数据布局（--registry/--scripts-dir/--dist-dir/--archive-path），零值兜底默认。
 // 调用方自行决定输出格式 —— action.yml 需要 {authorized, changed, result} 结构，
 // 而 CLI 直接跑 doctor 时需要人类可读文本或 DoctorReport，两者不能共用一次调用。
-func Check(root string) (problems []string, ok bool) {
-	problems = doctorProblems(root)
+func Check(root string, lay layout.Layout) (problems []string, ok bool) {
+	problems = doctorProblems(root, lay)
 	return problems, len(problems) == 0
 }
 
 // RunDoctor 执行数据一致性自检（SPEC-DATA §6 六条）。
 // check=true 时打印逐条问题；json=true 时输出 JSON。返回进程退出码（0/1）。
-func RunDoctor(root string, check, asJSON bool) int {
-	problems := doctorProblems(root)
+func RunDoctor(root string, lay layout.Layout, check, asJSON bool) int {
+	problems := doctorProblems(root, lay)
 	rep := DoctorReport{Problems: problems, OK: len(problems) == 0}
 
 	if asJSON {
@@ -60,13 +61,14 @@ func boolToInt(b bool) int {
 	return 0
 }
 
-// doctorProblems 收集全部问题（空 = 健康）。
-func doctorProblems(root string) []string {
+// doctorProblems 收集全部问题（空 = 健康）。lay 零值兜底默认布局。
+func doctorProblems(root string, lay layout.Layout) []string {
+	lay = lay.Normalize()
 	var probs []string
 	add := func(format string, args ...any) { probs = append(probs, fmt.Sprintf(format, args...)) }
 
 	// 1. registry 可解析 + schema + id/type（Parse 内部已校验）
-	reg, err := registry.Load(filepath.Join(root, "registry.json"))
+	reg, err := registry.Load(lay.RegistryPath(root))
 	if err != nil {
 		add("registry.json 无法解析: %v", err)
 		return probs // 后续检查依赖 registry，直接返回
@@ -79,8 +81,8 @@ func doctorProblems(root string) []string {
 
 	for _, s := range reg.Scripts {
 		// 2/3. 源码文件存在性（按软删状态双向校验）
-		srcPath := scriptSourcePath(root, s)
-		distPath := filepath.Join(root, script.FS{}.DistPath(s.ID))
+		srcPath := scriptSourcePath(root, lay, s)
+		distPath := filepath.Join(lay.DistPath(root), s.ID+".user.js")
 		srcExists := fileExists(srcPath)
 		distExists := fileExists(distPath)
 
@@ -99,15 +101,15 @@ func doctorProblems(root string) []string {
 
 		// 5. 孤儿检测：登记源码目录归属
 		if s.Type == registry.TypeSelf {
-			seenDirs[filepath.Join(root, "scripts", "self", s.ID)] = true
+			seenDirs[filepath.Join(lay.ScriptsPath(root), "self", s.ID)] = true
 		} else {
-			seenDirs[filepath.Join(root, "scripts", "synced", s.ID)] = true
+			seenDirs[filepath.Join(lay.ScriptsPath(root), "synced", s.ID)] = true
 		}
 	}
 
 	// 5b. 盘上存在但 registry 无条目 → 孤儿目录
 	for _, kind := range []string{"self", "synced"} {
-		base := filepath.Join(root, "scripts", kind)
+		base := filepath.Join(lay.ScriptsPath(root), kind)
 		entries, err := os.ReadDir(base)
 		if err != nil {
 			continue // 目录不存在 = 无孤儿
@@ -117,13 +119,14 @@ func doctorProblems(root string) []string {
 				continue
 			}
 			if !seenDirs[filepath.Join(base, e.Name())] {
-				add("孤儿目录: scripts/%s/%s（registry 无对应条目）", kind, e.Name())
+				add("孤儿目录: %s/%s/%s（registry 无对应条目）",
+					strings.Trim(filepath.ToSlash(lay.Scripts), "/"), kind, e.Name())
 			}
 		}
 	}
 
-	// 6. archive/commands.json 可解析 + 无重复 command_id
-	archivePath := filepath.Join(root, "archive", "commands.json")
+	// 6. 命令归档可解析 + 无重复 command_id
+	archivePath := lay.ArchivePath(root)
 	if data, err := os.ReadFile(archivePath); err == nil {
 		var arch struct {
 			Schema   int `json:"schema"`
@@ -149,11 +152,12 @@ func doctorProblems(root string) []string {
 	return probs
 }
 
-func scriptSourcePath(root string, s registry.Script) string {
+func scriptSourcePath(root string, lay layout.Layout, s registry.Script) string {
+	kind, file := "synced", "script.user.js"
 	if s.Type == registry.TypeSelf {
-		return filepath.Join(root, "scripts", "self", s.ID, "index.js")
+		kind, file = "self", "index.js"
 	}
-	return filepath.Join(root, "scripts", "synced", s.ID, "script.user.js")
+	return filepath.Join(lay.ScriptsPath(root), kind, s.ID, file)
 }
 
 func fileExists(path string) bool {

@@ -33,6 +33,7 @@ func runProject(env *Env, args string, codeBlocks []string) (Result, error) {
 		RepoOwner: env.RepoOwner,
 		RepoName:  env.RepoName,
 		PagesBase: env.PagesBase,
+		DistSeg:   env.layout().DistSeg(),
 		GHClient:  env.GHClient,
 	}
 
