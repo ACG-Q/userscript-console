@@ -427,6 +427,53 @@ footer.foot a { font-weight: 600; }
 .check { margin-left: auto; font-weight: 700; visibility: hidden; }
 .theme-list button[aria-pressed="true"] .check { visibility: visible; }
 
+ 
+.frame:has(.docs-layout) { max-width: 1440px; overflow: clip; }  
+.docs-layout { display: grid; grid-template-columns: 248px minmax(0, 1fr) 216px; align-items: start; }
+
+ 
+.docs-nav { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; padding: 18px 12px 32px; background: var(--bg); }
+.docs-nav .nav-group { padding: 14px 12px 6px; font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
+.docs-nav a { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 2px; padding: 7px 12px; border-radius: 6px; font-size: 14px; color: var(--text); }
+.docs-nav a:hover { background: var(--bg-subtle); text-decoration: none; }
+.docs-nav a.on { background: var(--brand-fade); color: var(--brand); font-weight: 600; }
+.docs-nav .n-desc { color: var(--text-muted); font-size: 12.5px; }
+.docs-nav a.on .n-desc { color: var(--brand); opacity: .8; }
+
+ 
+.docs-layout main { min-width: 0; padding: 24px 36px 72px; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+.crumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; font-size: 13px; color: var(--text-muted); }
+.crumbs .sep { color: var(--border-strong); }
+.docs-layout main > h1 { margin: 0 0 18px; font-size: 28px; letter-spacing: -.01em; }
+.docs-layout .d-doc h2 { margin-top: 34px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 20px; scroll-margin-top: 12px; }
+.docs-layout .d-doc h2:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+.docs-layout .d-doc h3 { font-size: 16.5px; }
+.docs-layout .d-doc tbody tr:nth-child(even) td { background: var(--bg-subtle); }
+.docs-layout .d-doc blockquote { margin: 14px 0; padding: 8px 16px; border-left: 3px solid var(--brand); background: var(--info-bg); color: var(--text); }
+.docs-layout .d-doc pre { background: var(--tip-bg); border-color: transparent; color: var(--tip-fg); }
+.docs-layout .d-doc pre code { color: inherit; }
+
+ 
+.docs-toc { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; padding: 24px 18px 32px; font-size: 13px; }
+.docs-toc .toc-label { margin-bottom: 8px; font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
+.docs-toc a { display: block; padding: 5px 0 5px 12px; border-left: 2px solid var(--border); color: var(--text-muted); }
+.docs-toc a:hover { color: var(--text); text-decoration: none; }
+.docs-toc a.on { border-left-color: var(--brand); color: var(--brand); font-weight: 600; }
+
+@media (max-width: 1100px) {
+  .docs-layout { grid-template-columns: 248px minmax(0, 1fr); }
+  .docs-toc { display: none; }
+}
+@media (max-width: 760px) {
+  .frame:has(.docs-layout) { max-width: 1060px; }
+  .docs-layout { grid-template-columns: 1fr; }
+  .docs-nav { position: static; display: flex; flex-wrap: nowrap; gap: 6px; max-height: none; overflow-x: auto; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .docs-nav .nav-group { display: none; }
+  .docs-nav a { flex: none; margin-bottom: 0; padding: 6px 14px; border: 1px solid var(--border); border-radius: var(--radius-pill); white-space: nowrap; }
+  .docs-nav .n-desc { display: none; }
+  .docs-layout main { padding: 18px 16px 60px; border-left: none; border-right: none; }
+}
+
 .pv-a { --pv-bar-bg: #fff; --pv-bar-bd: #d8dee4; --pv-bar-fg: #0969da; --pv-hero-bg: #f6f8fa; --pv-title: #1f2328; --pv-sub: #8c959f; --pv-stat-bg: #fff; --pv-stat-bd: #d8dee4; --pv-accent: #0969da; --pv-body-bg: #fff; --pv-card-bg: #fff; --pv-card-bd: #d8dee4; }
 .pv-b { --pv-bar-bg: #0b0e0c; --pv-bar-bd: #2c302c; --pv-bar-fg: #3fb950; --pv-hero-bg: #0b0e0c; --pv-title: #eef1ef; --pv-sub: #898f8a; --pv-stat-bg: #191f1a; --pv-stat-bd: #2c302c; --pv-accent: #3fb950; --pv-body-bg: #101411; --pv-card-bg: #191f1a; --pv-card-bd: #2c302c; }
 .pv-c { --pv-bar-bg: linear-gradient(135deg, #6e56cf, #8b5cf6 55%, #a855f7); --pv-bar-bd: transparent; --pv-bar-fg: #fff; --pv-hero-bg: linear-gradient(135deg, #6e56cf, #8b5cf6 55%, #a855f7); --pv-title: #fff; --pv-sub: #e9e4ff; --pv-stat-bg: rgba(255, 255, 255, .13); --pv-stat-bd: rgba(255, 255, 255, .33); --pv-accent: #6e56cf; --pv-body-bg: #faf9ff; --pv-card-bg: #fff; --pv-card-bd: #ece8f8; }
@@ -459,7 +506,7 @@ footer.foot a { font-weight: 600; }
 </div>
 <div class="d-meta"><span><i>作者</i>ACG-Q</span><span><i>更新</i>2026-10-05</span><span><i>匹配规则</i><code>*://*/*</code> <code>https://example.com/*</code></span></div>
 <p class="sc-desc">含 &lt;b&gt;HTML&lt;/b&gt; 与 &#34;引号&#34; 的描述</p>
-<section class="d-doc"><h1>使用说明</h1>
+<section class="d-doc"><h1 id="heading">使用说明</h1>
 <p>含 | 竖线 的表格内容</p>
 </section>
 
