@@ -40,6 +40,12 @@ var embedFS embed.FS
 // controlIssue 管理入口固定 Issue #1（对齐 projec-02 CONFIG）。
 const controlIssue = 1
 
+// 文档分组名（侧栏标题与面包屑共用）。
+const (
+	docGroupIntro = "介绍"
+	docGroupCmds  = "命令文档"
+)
+
 // Options 控制站点生成行为。
 type Options struct {
 	Out             string // 输出根目录，空→"dist"
@@ -145,6 +151,7 @@ func Build(reg *registry.Registry, opts Options, data Data) (Outcome, error) {
 			Title:   dp.title,
 			TOC:     docPages.tocFrom(dp),
 			PageTOC: extractPageTOC(bodyHTML),
+			Nav:     docPages.navFor(dp),
 			Content: template.HTML(bodyHTML),
 		}
 		h, err := r.renderPage(dp.title, "docs", d, nil, root)
@@ -471,6 +478,20 @@ type docTOCEntry struct {
 	Name string
 }
 
+// docNavGroup 侧边栏分组（介绍 / 命令文档）。
+type docNavGroup struct {
+	Title string
+	Items []docNavItem
+}
+
+// docNavItem 侧边栏条目：Name/Desc 为「——」拆分后的主名与灰色小字描述。
+type docNavItem struct {
+	Href   string
+	Name   string
+	Desc   string
+	Active bool
+}
+
 // docAnchor 正文 h2 锚点：右栏「本页目录」条目。
 type docAnchor struct {
 	ID   string
@@ -507,6 +528,7 @@ type docsData struct {
 	Title   string
 	TOC     []docTOCEntry
 	PageTOC []docAnchor
+	Nav     []docNavGroup
 	Content template.HTML
 }
 
@@ -957,23 +979,85 @@ func (p docPage) outName() string {
 
 type docPages []docPage
 
-// tocFrom 从当前页视角生成目录链接：同目录裸 slug、跨目录带前缀
+// hrefFor 从 cur 视角生成 p 的链接：同目录裸 slug、跨目录带前缀
 // （仅两级："" 与 commands/）。
+func hrefFor(cur, p docPage) string {
+	switch {
+	case p.dir == cur.dir:
+		return p.slug + ".html"
+	case cur.dir == "":
+		return p.dir + "/" + p.slug + ".html"
+	default:
+		return "../" + p.slug + ".html"
+	}
+}
+
+// tocFrom 旧顶部目录（任务 5 重写模板后移除）。
 func (ps docPages) tocFrom(cur docPage) []docTOCEntry {
 	toc := make([]docTOCEntry, 0, len(ps))
 	for _, p := range ps {
-		var href string
-		switch {
-		case p.dir == cur.dir:
-			href = p.slug + ".html"
-		case cur.dir == "":
-			href = p.dir + "/" + p.slug + ".html"
-		default:
-			href = "../" + p.slug + ".html"
-		}
-		toc = append(toc, docTOCEntry{Href: href, Name: p.title})
+		toc = append(toc, docTOCEntry{Href: hrefFor(cur, p), Name: p.title})
 	}
 	return toc
+}
+
+// navFor 分组侧边栏：介绍（顶层，index.md 固定排首、其余字典序）+
+// 命令文档（commands/，沿用 listDocFiles 的字典序）。链接规则同 tocFrom。
+func (ps docPages) navFor(cur docPage) []docNavGroup {
+	var top, cmds docPages
+	var index *docPage
+	for _, p := range ps {
+		if p.dir != "" {
+			cmds = append(cmds, p)
+			continue
+		}
+		if p.slug == "index" {
+			cp := p
+			index = &cp
+			continue
+		}
+		top = append(top, p)
+	}
+	sort.Slice(top, func(i, j int) bool { return top[i].slug < top[j].slug })
+
+	var groups []docNavGroup
+	if index != nil || len(top) > 0 {
+		g := docNavGroup{Title: docGroupIntro}
+		if index != nil {
+			g.Items = append(g.Items, navItem(cur, *index))
+		}
+		for _, p := range top {
+			g.Items = append(g.Items, navItem(cur, p))
+		}
+		groups = append(groups, g)
+	}
+	if len(cmds) > 0 {
+		g := docNavGroup{Title: docGroupCmds}
+		for _, p := range cmds {
+			g.Items = append(g.Items, navItem(cur, p))
+		}
+		groups = append(groups, g)
+	}
+	return groups
+}
+
+func navItem(cur, p docPage) docNavItem {
+	name, desc := splitDocName(p.title)
+	return docNavItem{
+		Href:   hrefFor(cur, p),
+		Name:   name,
+		Desc:   desc,
+		Active: p.outName() == cur.outName(),
+	}
+}
+
+// splitDocName 拆 "add —— 添加脚本" → ("add", "添加脚本")；无分隔符 → (title, "")。
+func splitDocName(title string) (string, string) {
+	const sep = "——"
+	if i := strings.Index(title, sep); i >= 0 {
+		return strings.TrimSpace(title[:i]), strings.TrimSpace(title[i+len(sep):])
+	}
+	return strings.TrimSpace(title), ""
 }
 
 // docFile 一份待转换的 md：dir 为 ""（顶层）或 "commands"。

@@ -1382,3 +1382,48 @@ func TestExtractPageTOC(t *testing.T) {
 		t.Errorf("HTML 实体应反转义（模板会再转义一次）, got %+v", escaped)
 	}
 }
+
+// ── 侧边栏分组导航 ──────────────────────────────────────────
+
+// TestDocNavFor 分组、index 置首、当前页高亮、两层相对链接规则。
+func TestDocNavFor(t *testing.T) {
+	pages := docPages{
+		{dir: "", slug: "spec-data-model", title: "数据模型"},
+		{dir: "", slug: "index", title: "userscript-console"},
+		{dir: "commands", slug: "add", title: "add —— 添加脚本"},
+	}
+	groups := pages.navFor(docPage{dir: "", slug: "index", title: "userscript-console"})
+	if len(groups) != 2 || groups[0].Title != "介绍" || groups[1].Title != "命令文档" {
+		t.Fatalf("分组错误: %+v", groups)
+	}
+	if groups[0].Items[0].Name != "userscript-console" {
+		t.Errorf("index.md 应排介绍组首位, got %+v", groups[0].Items)
+	}
+	add := groups[1].Items[0]
+	if add.Href != "commands/add.html" || add.Name != "add" || add.Desc != "添加脚本" {
+		t.Errorf("命令项应拆名并带目录前缀, got %+v", add)
+	}
+	if !groups[0].Items[0].Active || groups[0].Items[1].Active {
+		t.Errorf("Active 应仅标记当前页, got %+v", groups[0].Items)
+	}
+
+	curCmd := pages.navFor(docPage{dir: "commands", slug: "add", title: "add —— 添加脚本"})
+	if curCmd[0].Items[1].Href != "../spec-data-model.html" {
+		t.Errorf("commands 回顶层应 ../ 前缀, got %q", curCmd[0].Items[1].Href)
+	}
+	if curCmd[1].Items[0].Href != "add.html" || !curCmd[1].Items[0].Active {
+		t.Errorf("同目录应裸 slug 且高亮, got %+v", curCmd[1].Items[0])
+	}
+}
+
+// TestSplitDocName "add —— 添加脚本" 拆名规则。
+func TestSplitDocName(t *testing.T) {
+	name, desc := splitDocName("add —— 添加脚本")
+	if name != "add" || desc != "添加脚本" {
+		t.Errorf("拆分错误: %q/%q", name, desc)
+	}
+	name, desc = splitDocName("数据模型")
+	if name != "数据模型" || desc != "" {
+		t.Errorf("无分隔符应回退: %q/%q", name, desc)
+	}
+}
