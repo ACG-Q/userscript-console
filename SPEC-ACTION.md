@@ -178,13 +178,14 @@ jobs:
           git add registry.json scripts dist archive
           git diff --staged --quiet || (git commit -m "Apply command: ${{ github.event.comment.user.login }}" && git push)
 
-      - name: Trigger site deploy      # commit/push 的 token 不触发 workflow → 用 PAT 显式派发
+      - name: Trigger site deploy      # commit/push 不触发 workflow → 显式派发
+        id: deploy
         if: ${{ !cancelled() && steps.commit.outcome == 'success' }}
         env: { GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
         run: gh workflow run deploy-pages.yml
 
       - name: 失败兜底回帖              # 失败也回帖（现规范）
-        if: ${{ !cancelled() && (steps.cmd.outcome == 'failure' || steps.proj.outcome == 'failure' || steps.commit.outcome == 'failure') }}
+        if: ${{ !cancelled() && (steps.cmd.outcome == 'failure' || steps.proj.outcome == 'failure' || steps.commit.outcome == 'failure' || steps.deploy.outcome == 'failure') }}
         env: { GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
         run: |
           gh issue comment ${{ github.event.issue.number }} \
