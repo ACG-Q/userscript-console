@@ -465,7 +465,23 @@ func buildRun(args []string) int {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		return 1
 	}
-	return emitResult(res, hasJSONFlag(args))
+
+	// 站点产物搬入（合并 assemble_site.py，设计 D7）：
+	// --pages-out > env USM_PAGES_OUT；空 → 纯 build（dist 原样保留）。
+	assembleRC := 0
+	if pagesOut := pagesOutFrom(args); pagesOut != "" {
+		moved, err := assemblePages(root, lay, pagesOut)
+		if err != nil {
+			res.Warnings = append(res.Warnings, "站点产物搬移失败: "+err.Error())
+			assembleRC = 1
+		} else if moved > 0 {
+			res.Changed = true
+		}
+	}
+	if rc := emitResult(res, hasJSONFlag(args)); rc != 0 {
+		return rc
+	}
+	return assembleRC
 }
 
 // ── cleanup ─────────────────────────────────────────────────
