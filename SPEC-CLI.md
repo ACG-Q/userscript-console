@@ -39,6 +39,22 @@
 | Pages 基址 | `--pages-base` | `GITHUB_PAGES_URL` | 由 `--repo` 推导 `https://<owner>.github.io/<name>` |
 | 作者 | `--author-name` `--author-ns` | `AUTHOR_NAME` `AUTHOR_NAMESPACE` | `Your Name` / `https://your-namespace.com` |
 | registry schema | `--registry-schema-version` | — | `1`，不匹配 → exit 1 |
+| 注册表文件 | `--registry` | `USM_REGISTRY` | `registry.json` |
+| 脚本目录 | `--scripts-dir` | `USM_SCRIPTS_DIR` | `scripts` |
+| 分发/站点目录 | `--dist-dir` | `USM_DIST_DIR` | `dist` |
+| 命令归档文件 | `--archive-path` | `USM_ARCHIVE_PATH` | `archive/commands.json` |
+
+### 0.5 数据布局（路径可配置）
+
+后四项即数据布局（`internal/layout` 统一解析，`usm help` 亦有摘要）：
+
+- 五个触碰数据的子命令（`run-command`/`project`/`build`/`cleanup`/`doctor`）在入口解析；非法值 → stderr `ERROR: ...` + exit 2（§0.2）。
+- **相对值**：相对数据根解析，必须是干净的 `/` 相对路径——拒绝空值、`..`（防目录穿越）与反斜杠（跨平台歧义）；**绝对值**原样透传（如 CI 指到 runner 临时目录）。
+- 作用面：
+  - `registry.json` → registry 读写与 schema 校验；
+  - `scripts/` → 脚本落盘/列表/删除（`script.FS`）；
+  - `dist/` → `usm build` 整站产物与 `.user.js` 分发文件的输出目录；`@downloadURL`/`@updateURL` = `PAGES_BASE/<dist 相对段>/<id>.user.js`，自定义 `--dist-dir` 时外部链接同步跟随；
+  - `archive/commands.json` → 命令归档（`project` 读取），站点命令历史页经 `pages.Options.ArchivePath` 同源。
 
 ---
 

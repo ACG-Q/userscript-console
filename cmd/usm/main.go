@@ -20,7 +20,6 @@ import (
 	"github.com/acg-q/userscript-console/internal/cli"
 	"github.com/acg-q/userscript-console/internal/commands"
 	"github.com/acg-q/userscript-console/internal/github"
-	"github.com/acg-q/userscript-console/internal/layout"
 	"github.com/acg-q/userscript-console/internal/parser"
 	"github.com/acg-q/userscript-console/internal/registry"
 	"github.com/acg-q/userscript-console/internal/snapshot"
@@ -115,6 +114,13 @@ func checkRegistrySchema(args []string) int {
 // ── doctor ──────────────────────────────────────────────────
 
 func doctorRun(args []string) int {
+	lay, err := parseLayout(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return 2
+	}
+	args = stripLayoutFlags(args)
+
 	root, check, asJSON := ".", false, false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -139,8 +145,7 @@ func doctorRun(args []string) int {
 	// 故 --json 时必须输出 {authorized, changed, result} 结构
 	// （cli.RunDoctor 的 {problems, ok} 结构 jq 取不到 .changed）。
 	if asJSON {
-		// T8 先取 env 层布局；Task 10 接 --registry 等 flag 后改传 flag 解析结果。
-		problems, ok := cli.Check(root, layout.FromEnv())
+		problems, ok := cli.Check(root, lay)
 		result := "✅ doctor 检查通过"
 		if !ok {
 			result = "❌ doctor 检查未通过：\n" + strings.Join(problems, "\n")
@@ -160,12 +165,17 @@ func doctorRun(args []string) int {
 		}
 		return 0
 	}
-	return cli.RunDoctor(root, layout.FromEnv(), check, false)
+	return cli.RunDoctor(root, lay, check, false)
 }
 
 // ── run-command ─────────────────────────────────────────────
 
 func runCommandRun(args []string) int {
+	lay, err := parseLayout(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return 2
+	}
 	flags := parseRunCommandFlags(args)
 
 	// flag > env > 默认（SPEC-CLI §0.4）。action.yml 只经 env 传参（防注入，
@@ -227,6 +237,7 @@ func runCommandRun(args []string) int {
 
 	env := &commands.Env{
 		Root:            cli.EnvOr("USM_ROOT", "."),
+		Paths:           lay,
 		RepoOwner:       flags.RepoOwner,
 		RepoName:        cli.EnvOr("GITHUB_REPOSITORY", cli.EnvOr("GH_REPO", "")),
 		CommentUser:     flags.CommentUser,
@@ -275,9 +286,15 @@ func emitCommandResult(res commands.Result, authorized bool, flags cli.RunComman
 // ── project ─────────────────────────────────────────────────
 
 func projectRun(args []string) int {
+	lay, err := parseLayout(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return 2
+	}
 	root := parseRootFlag(args)
 	env := &commands.Env{
 		Root:      root,
+		Paths:     lay,
 		RepoOwner: cli.EnvOr("GH_REPO_OWNER", ""),
 		RepoName:  cli.EnvOr("GITHUB_REPOSITORY", cli.EnvOr("GH_REPO", "")),
 		PagesBase: cli.EnvOr("PAGES_BASE", ""),
@@ -325,9 +342,12 @@ func emitResultAuth(res commands.Result, authorized bool, asJSON bool) int {
 // ── build ───────────────────────────────────────────────────
 
 func buildRun(args []string) int {
+	lay, err := parseLayout(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return 2
+	}
 	root := parseRootFlag(args)
-	// T10 起改为 parseLayout(args)（flag > env > 默认）；本任务先接 env 层。
-	lay := layout.FromEnv()
 	pagesBase := cli.EnvOr("PAGES_BASE", "")
 	now := time.Now()
 	gh := newGitHubClient()
@@ -363,9 +383,15 @@ func buildRun(args []string) int {
 // ── cleanup ─────────────────────────────────────────────────
 
 func cleanupRun(args []string) int {
+	lay, err := parseLayout(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return 2
+	}
 	root := parseRootFlag(args)
 	env := &commands.Env{
 		Root:     root,
+		Paths:    lay,
 		GHClient: newGitHubClient(),
 		Now:      time.Now(),
 	}
@@ -538,5 +564,10 @@ func usage(w *os.File) {
   help           本帮助
 
 全局约定: 默认工作目录即数据根（含 registry.json）；--root 可显式指定。
+路径 flag（优先级 flag > env > 默认，详见 SPEC-CLI「数据布局」）:
+  --registry <path>    注册表文件（env USM_REGISTRY，默认 registry.json）
+  --scripts-dir <dir>  脚本目录（env USM_SCRIPTS_DIR，默认 scripts）
+  --dist-dir <dir>     分发/站点产物目录（env USM_DIST_DIR，默认 dist）
+  --archive-path <p>   命令归档文件（env USM_ARCHIVE_PATH，默认 archive/commands.json）
 `)
 }
