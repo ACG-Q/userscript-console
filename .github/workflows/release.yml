@@ -10,6 +10,8 @@ name: Release
 #      「tag → 回填 → 推分支 → tag 语义被污染」的循环依赖（v1.0.1 实测卡死）。
 #      action.yml 不持有任何版本常量；binary-version / binary-sha256
 #      由调用方在 workflow 里显式声明（release 会打印现成的配置片段）。
+#      但 **回填 internal/buildinfo/VERSION 是安全的**：该文件不参与 tag 语义，
+#      仅作为源码模式（分支/sha 引用）的版本来源（设计 D1/D2）。
 #   4. concurrency 防止同 tag 重跑互相覆盖
 
 on:
@@ -117,7 +119,7 @@ jobs:
           NAME="usm-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}"
           mkdir -p dist
           go build -trimpath \
-            -ldflags "-s -w -X main.version=${VERSION}" \
+            -ldflags "-s -w -X github.com/acg-q/userscript-console/internal/buildinfo.injected=${VERSION}" \
             -o "dist/${NAME}" ./cmd/usm
           # 冒烟：二进制能自报版本
           if [ "${{ matrix.goos }}" = "linux" ] && [ "${{ matrix.goarch }}" = "amd64" ]; then
@@ -286,3 +288,44 @@ jobs:
           git tag -f v1 "$TAG"
           git push -f origin refs/tags/v1
           echo "v1 -> $TAG"
+
+  # ── 4. 回填 master 的 VERSION 文件（设计 D1/D2） ────────────────
+  #
+  # 语义：tag 保持不可变（不挪 tag），发版后把去掉 v 的版本号写回
+  # internal/buildinfo/VERSION（go:embed），供以下场景解析（D3 解析链第 3 级）：
+  #   - 源码模式但 ACTION_REF 是分支/sha/大版本 tag（非语义化，USM_VERSION 被忽略）
+  #   - 本地 `go run ./cmd/usm version`
+  # ldflags 注入的二进制与精确 vX.Y.Z 的 ACTION_REF 优先级更高，不受回填时序影响。
+  backfill-version:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: master   # 与 tag 无关，始终回填主干（回填提交不进入被发布的 tag）
+
+      - name: 回填 VERSION
+        shell: bash
+        env:
+          TAG: ${{ env.USM_VERSION }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::tag 必须形如 vX.Y.Z，当前=$TAG"
+            exit 1
+          fi
+          NO_V="${TAG#v}"
+          printf '%s\n' "$NO_V" > internal/buildinfo/VERSION
+          if git diff --quiet -- internal/buildinfo/VERSION; then
+            echo "VERSION 已是 $NO_V，无需回填"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add internal/buildinfo/VERSION
+          git commit -m "chore(release): 回填 VERSION ${NO_V}"
+          git push origin HEAD:master
+          echo "已回填 VERSION=${NO_V}"
