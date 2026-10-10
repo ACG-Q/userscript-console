@@ -62,6 +62,15 @@ panel_cleanup:  PANEL_QUERY, DELETE_COMMENT_MUTATION
 ```
 权威来源：当前仓 `tools/validate_graphql.py::collect_queries`。**14 个文档的查询语义（字段/变量/返回集）必须等价**；文本形式自由，由 genqql codegen + CI schema 校验保障（D-05）。
 
+### 2.4 本次改造新增（无 Python 对照）
+
+| 能力 | 形态 | 要点 |
+|---|---|---|
+| `version` output | outputs 表 + `usm version` | 解析链 `-ldflags` > env `USM_VERSION`（精确 `vX.Y.Z`）> 内嵌 `VERSION` 文件 > `"dev"`（SPEC-ACTION §5） |
+| 数据路径配置 | `--registry`/`--scripts-dir`/`--dist-dir`/`--archive-path` + env `USM_*` | flag > env > 默认；相对数据根、拒 `..` 与反斜杠，绝对值透传（SPEC-CLI §0.4/§0.5） |
+| 站点搬移 | build `--pages-out` + env `USM_PAGES_OUT` | 收编旧站点组装脚本：`*.user.js` → `<out>/<dist 段>/`、其余 → `<out>/`；空=不搬（SPEC-CLI §3） |
+| 门禁删评 / 执行回帖 | run-command `--comment-id` / `--post-reply` | 收编旧门禁/回帖脚本；删评与回帖失败仅 warning 不改退出码（SPEC-CLI §1） |
+
 ---
 
 ## 3. 对外接口三层

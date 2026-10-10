@@ -135,6 +135,8 @@ runs:
 
 ### 3.1 命令处理（替换现 `issue-commands.yml`）
 
+> 门禁/回帖已收进 action：`comment-id` 未授权时自动删评（合并 gate.py）、`post-reply` 自动回帖执行结果（合并 reply.py）——不再需要 workflow 侧的 gate 步骤与 Reply 步骤（设计 D7）。
+
 ```yaml
 name: Issue Commands Manager
 on: { issue_comment: { types: [created] } }
@@ -149,55 +151,45 @@ jobs:
     steps:
       - uses: actions/checkout@<sha>
 
-      - name: Permission gate          # 保留第一道门禁（最小权限原则）
-        id: gate
-        env: { COMMENT_USER: '${{ github.event.comment.user.login }}',
-               REPO_OWNER: '${{ github.repository_owner }}' }
-        run: |
-          if [ "$COMMENT_USER" == "$REPO_OWNER" ]; then
-            echo "authorized=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "authorized=false" >> "$GITHUB_OUTPUT"
-            gh api -X DELETE "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}"
-          fi
-
-      - name: Run command
+      - name: Run command                # 门禁 + 执行 + 结果回帖都在 action 内
         id: cmd
-        if: steps.gate.outputs.authorized == 'true'
         uses: acg-q/userscript-console@<sha>        # ← 或 ./（同仓自测）
         with:
           command: run-command
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-body: ${{ github.event.comment.body }}
           comment-user: ${{ github.event.comment.user.login }}
+          comment-id: ${{ github.event.comment.id }}   # 未授权 → 自动删该评论
           issue-number: ${{ github.event.issue.number }}
+          post-reply: 'true'                              # 执行结果回帖
 
       - name: Project issues           # 投影仍需跑（registry 可能已变）
         id: proj
-        if: steps.gate.outputs.authorized == 'true'
+        if: steps.cmd.outputs.authorized == 'true'
         uses: acg-q/userscript-console@<sha>
-        with: { command: project, github-token: ${{ secrets.GITHUB_TOKEN }} }
+        with: { command: project, github-token: '${{ secrets.GITHUB_TOKEN }}' }
 
-      - name: Commit                   # ⚠️ 路径白名单（审查项：禁止 git add .）
+      - name: Commit changes           # ⚠️ 路径白名单（审查项：禁止 git add .）
         id: commit
-        if: steps.gate.outputs.authorized == 'true' && steps.cmd.outputs.changed == 'true'
+        if: ${{ !cancelled() && steps.cmd.outputs.authorized == 'true' && steps.cmd.outputs.changed == 'true' && steps.cmd.outcome == 'success' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add registry.json scripts dist archive
-          git diff --staged --quiet || (git commit -m "Apply command: ${{ github.event.comment.user.login }}" && git push && echo "committed=true" >> "$GITHUB_OUTPUT")
+          git diff --staged --quiet || (git commit -m "Apply command: ${{ github.event.comment.user.login }}" && git push)
 
-      - name: Reply                    # 失败也回帖（现规范）
-        if: ${{ !cancelled() && steps.gate.outputs.authorized == 'true' }}
-        env:
-          RESULT: ${{ steps.cmd.outputs.result }}
-          PROJ_OUT: ${{ steps.proj.outputs.result }}
+      - name: Trigger site deploy      # commit/push 的 token 不触发 workflow → 用 PAT 显式派发
+        if: ${{ !cancelled() && steps.commit.outcome == 'success' }}
+        env: { GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
+        run: gh workflow run deploy-pages.yml
+
+      - name: 失败兜底回帖              # 失败也回帖（现规范）
+        if: ${{ !cancelled() && (steps.cmd.outcome == 'failure' || steps.proj.outcome == 'failure' || steps.commit.outcome == 'failure') }}
+        env: { GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
         run: |
-          BODY="${RESULT:-操作完成}"
-          [ -n "$PROJ_OUT" ] && BODY="$BODY
-          $PROJ_OUT"
           gh issue comment ${{ github.event.issue.number }} \
-            -R ${{ github.repository }} --body "**执行结果：**"$'\n'"$BODY"
+            -R ${{ github.repository }} \
+            --body "⚠️ 执行/提交/派发环节失败，请查看 Actions 日志"
 ```
 
 ### 3.2 二进制零手填调用示例（v1.1.0+）
@@ -272,6 +264,7 @@ jobs:
 | 调用方 pin | **内容仓用 commit-sha**（安全惯例，与仓内 `actions/checkout@<sha>` 一致）；外部用户可用 `@v1` 或 `@vX.Y.Z`（零手填二进制） |
 | 二进制版本自动推导（v1.1.0+） | 1) `binary-version` 显式值 → 用之<br>2) ACTION_REF 精确 `vX.Y.Z` → 去 v 使用<br>3) ACTION_REF 大版本 `vN` → GitHub API 取最新 `vN.x` release<br>4) 其他（sha/分支/本地） → 明确报错提示显式传版本 |
 | 二进制校验和自动推导（v1.1.0+） | 1) `binary-sha256` 显式值 → 用之<br>2) 缺省时从同 release `checksums.txt` 取 `usm-linux-amd64` 校验和 |
+| usm 版本解析链（设计 D3） | `-ldflags` 注入 > env `USM_VERSION`（= `github.action_ref`，仅精确 `vX.Y.Z` 匹配语义化才生效）> 内嵌 `VERSION` 文件 > `"dev"`；pin sha / `@v1` 源码模式显示的是「该 commit 时点最近一次发版」的 VERSION 值 |
 | 自测 | 本仓 CI 用 `uses: ./` 跑 5 个 command 的冒烟（无需发布） |
 | 内置版本 | `action.yml` 的 `inputs.version`/`binary-version`/`binary-sha256` 默认均为空，**不再回填**；缺省靠上述规则推导 |
 
@@ -286,4 +279,6 @@ jobs:
 - [ ] `registry-schema-version: 99` → 失败且信息含 `registry schema`
 - [ ] `cleanup` 不传 `apply` → 无任何删除（dry-run 验证）
 - [ ] `result` 多行内容经 `$GITHUB_OUTPUT` heredoc 传递后仍完整（含 emoji 与中文）
+- [ ] `comment-id`/`post-reply`：未授权删评一次（删除失败仅 warning）、`post-reply: 'false'` 零回帖、非法布尔 env → exit 2
+- [ ] `pages-out`：搬移成功后 dist 清空且 `*.user.js` 落 `<out>/<dist 段>/`；空值纯 build；搬移失败 → warnings 追加且 exit 1
 - [ ] v1：`sha256sum -c` 故意改坏 → 必须失败

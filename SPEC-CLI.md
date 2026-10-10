@@ -65,6 +65,7 @@
 ```
 usm run-command [--comment-body <s>] [--comment-user <s>] [--repo-owner <s>]
                 [--issue-number <n>] [--result-file <path>]
+                [--comment-id <n>] [--post-reply <bool>]
                 [--json]
 ```
 
@@ -74,14 +75,18 @@ usm run-command [--comment-body <s>] [--comment-user <s>] [--repo-owner <s>]
 | `--comment-user` | `COMMENT_USER` | **是**（缺失或空 → exit 1，fail-open 修复） |
 | `--repo-owner` | `REPO_OWNER` | **是**（同上） |
 | `--issue-number` | `ISSUE_NUMBER` | **是**（整数，非整数/缺失 → 结果文本，对齐现语义但不再跳过校验） |
+| `--comment-id` | `COMMENT_ID` | 否（正整数；缺失/0 → 门禁未授权时不删评；非法 → exit 2） |
+| `--post-reply` | `POST_REPLY` | 否（缺省 `true`；`true/false/1/0/yes/no/on/off`，非法 → exit 2） |
 
 **判定顺序（逐条对齐语义，缺一不可）**：
 
-1. `issue-number != control-issue-number(=1)` → 结果 `非命令面板 Issue #<n>，忽略执行`，exit 0
-2. `comment-user != repo-owner` → 结果 `权限不足：<user> 不是仓库所有者 <owner>`，exit 0
+1. `issue-number != control-issue-number(=1)` → 结果 `非命令面板 Issue #<n>，忽略执行`，exit 0（不删评、不回帖）
+2. `comment-user != repo-owner` → 结果 `权限不足：<user> 不是仓库所有者 <owner>`，exit 0；`comment-id` 有效时**自删该触发评论**（合并 gate.py，设计 D7；删除失败只记 warning，不改退出码）
 3. 解析失败/无命令 → `未识别命令`
 4. 命令未注册 → `未知命令: <cmd>`
 5. 执行（**统一 panic 边界**：panic → 结果 `` ❌ 命令 /<cmd> 执行时发生内部错误，已中止（仓库状态可能未变更）。\n```\n<stack≤3>\n``` ``，exit 0）
+
+**执行回帖（`--post-reply`，设计 D7 合并 reply.py）**：仅当 `post-reply=true && authorized && result 非空 && GitHub 客户端可用` 时回帖 `**执行结果：**\n<result>`；回帖失败只记 `回帖失败: …` warning，不改退出码。未授权只删评不回帖。回帖先于 JSON emit 与 `--result-file` 写入。
 
 **`--json` 输出**：
 ```json
@@ -121,17 +126,18 @@ usm project [--dry-run] [--json]
 **语义对应**：`build_pages.py::main`（DR-6：行为对齐，输出格式自由）
 
 ```
-usm build [--out dist] [--batch <n>=10] [--commands-per-page <n>=5] [--json]
+usm build [--dist-dir <dir>] [--pages-out <dir>] [--json]
 ```
 
 - 令牌**可空**：空 → stderr 打印 `WARNING: 未设置 GITHUB_TOKEN，跳过讨论统计拉取，页面降级渲染`，`stats=nil` 降级渲染，exit 0
-- 产物（全部在 `--out` 下）：
-  1. `index.html`（首屏 `--batch` 张卡片 + `#scriptList[data-total]` + `#loadMore/#listSentinel` 当且仅当 total>batch）
+- 产物（全部在 `--dist-dir`（默认 `dist`）下）：
+  1. `index.html`（首屏 batch=10 张卡片 + `#scriptList[data-total]` + `#loadMore/#listSentinel` 当且仅当 total>batch）
   2. `scripts.json`（全量卡片 `[{type, html}]`）
   3. `scripts/<id>.html`（有版本帖账本且拉取成功 → 版本切换面板；否则回退 Issue 面板）
-  4. `commands/page-1..N.html`（每页 `--commands-per-page`，新→旧）+ `commands/index.html` 跳转 + 清理陈旧分页
+  4. `commands/page-1..N.html`（每页 commands-per-page=5，新→旧）+ `commands/index.html` 跳转 + 清理陈旧分页
   5. `build-warnings.txt`：**有问题才写，无问题删除旧文件**
 - 幂等：**同一输入连续两次构建，产物字节一致**（幂等，快照依据）
+- 站点搬移（`--pages-out` > env `USM_PAGES_OUT`，设计 D7 合并 assemble_site.py）：构建成功后把 `*.user.js` 搬入 `<pages-out>/<dist 段>/`、其余搬入 `<pages-out>/` 根，搬后 dist 清空；空值=不搬移（纯 build）；相对值相对数据根、目标不存在自动创建；搬移失败 → `warnings` 追加 + exit 1
 
 **`--json`**：`{ "pages": 8, "warnings": ["…"], "changed": true }`
 
@@ -144,7 +150,7 @@ usm build [--out dist] [--batch <n>=10] [--commands-per-page <n>=5] [--json]
 **语义对应**：`panel_cleanup.py::process`（DR-6：行为对齐，输出格式自由）
 
 ```
-usm cleanup [--keep <n>=10] [--archive archive/commands.json] [--json] [--apply]
+usm cleanup [--keep <n>=10] [--archive-path archive/commands.json] [--json] [--apply]
 ```
 
 - 流程：分页拉 Issue#1 评论（100/页）→ 按「`/` 开头为命令，其后机器人评论归入同组」分组 → 保留**最近 `--keep` 组** → 其余**先按 comment id 幂等写归档，再逐条删除**
@@ -170,7 +176,8 @@ usm cleanup [--keep <n>=10] [--archive archive/commands.json] [--json] [--apply]
 - `--json`：`{ "problems": ["…"], "ok": false }`
 
 ### `usm version`
-- 打印版本（构建时 `-ldflags` 注入）+ `registry-schema-version`；Action 用它做启动自检。
+- 打印版本 + `registry-schema-version`；Action 用它做启动自检。
+- 版本解析链（设计 D3）：`-ldflags` 注入 > env `USM_VERSION`（仅 `^v?\d+\.\d+\.\d+$`，如 action ref 的精确 tag）> 内嵌 `VERSION` 文件 > `"dev"`；命中即去 `v` 前缀。分支/sha/大版本 tag 不匹配语义化版本 → 回落 `VERSION` 文件。
 
 ---
 
