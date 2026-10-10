@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/acg-q/userscript-console/internal/buildinfo"
 	"github.com/acg-q/userscript-console/internal/cli"
 	"github.com/acg-q/userscript-console/internal/commands"
 	"github.com/acg-q/userscript-console/internal/github"
@@ -23,9 +24,6 @@ import (
 	"github.com/acg-q/userscript-console/internal/registry"
 	"github.com/acg-q/userscript-console/internal/snapshot"
 )
-
-// version 由 -ldflags "-X main.version=x.y.z" 注入。
-var version = "dev"
 
 func main() {
 	os.Exit(run(os.Args[1:]))
@@ -50,7 +48,7 @@ func run(args []string) int {
 
 	switch args[0] {
 	case "version", "--version", "-v":
-		fmt.Printf("usm %s\nregistry-schema-version %d\n", version, registry.SchemaVersion)
+		fmt.Printf("usm %s\nregistry-schema-version %d\n", buildinfo.Version(), registry.SchemaVersion)
 		return 0
 	case "help", "--help", "-h":
 		usage(os.Stdout)
@@ -103,6 +101,7 @@ func checkRegistrySchema(args []string) int {
 				"changed":    false,
 				"result":     "❌ " + msg,
 				"warnings":   []string{},
+				"version":    buildinfo.Version(),
 			}); err != nil {
 				fmt.Fprintf(os.Stderr, "ERROR: 写 JSON 失败: %v\n", err)
 			}
@@ -148,6 +147,7 @@ func doctorRun(args []string) int {
 			"authorized": true,
 			"changed":    false,
 			"result":     result,
+			"version":    buildinfo.Version(),
 		}
 		if err := writeJSON(os.Stdout, payload); err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: 写 JSON 失败: %v\n", err)
@@ -309,6 +309,7 @@ func emitResultAuth(res commands.Result, authorized bool, asJSON bool) int {
 			"changed":    res.Changed,
 			"result":     res.Text,
 			"warnings":   res.Warnings,
+			"version":    buildinfo.Version(),
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: 写 JSON 失败: %v\n", err)
 			return 1

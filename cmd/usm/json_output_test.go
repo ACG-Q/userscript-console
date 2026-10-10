@@ -63,10 +63,13 @@ func assertActionJSON(t *testing.T, out, label string) {
 	if err := json.Unmarshal([]byte(out), &payload); err != nil {
 		t.Fatalf("%s: 输出不是合法 JSON（jq 会 parse error）: %v\n输出: %q", label, err, out)
 	}
-	for _, key := range []string{"authorized", "changed", "result"} {
+	for _, key := range []string{"authorized", "changed", "result", "version"} {
 		if _, ok := payload[key]; !ok {
 			t.Errorf("%s: JSON 缺字段 %q（action.yml 的 jq 会取到 null）", label, key)
 		}
+	}
+	if v, ok := payload["version"].(string); !ok || v == "" {
+		t.Errorf("%s: version 必须是非空字符串，实际 %T (%v)", label, payload["version"], payload["version"])
 	}
 	if _, ok := payload["changed"].(bool); !ok {
 		t.Errorf("%s: changed 必须是 bool，实际 %T", label, payload["changed"])
