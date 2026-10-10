@@ -40,45 +40,20 @@ func issueURL(env *Env, number int) string {
 
 // Result 投影结果统计。
 type Result struct {
-	Active  int
-	Deleted int
-	NoIssue int
-	Created int
-	Updated int
-	Errors  int
+	Active   int
+	Deleted  int
+	NoIssue  int
+	Created  int
+	Updated  int
+	Errors   int
+	Reopened int // 回填/判等时重开了已关闭 Issue
+	Posted   int // 本轮发布版本帖数
+	Skipped  int // 账本末条==当前，跳过发帖数
 }
 
-// Project 对账投影：遍历 registry，确保每个活跃脚本有关联的 Issue。
+// Project 对账投影：阶段一 Issue 对账；阶段二发帖在任务 5 接线。
 func Project(ctx context.Context, env *Env, r *registry.Registry) (Result, error) {
-	var res Result
-
-	for i := range r.Scripts {
-		s := &r.Scripts[i]
-		if s.Deleted {
-			res.Deleted++
-			if s.Issue != nil && env.GHClient != nil {
-				if err := TombstoneIssue(ctx, env.GHClient, s.Issue.NodeID); err != nil {
-					res.Errors++
-					continue
-				}
-				res.Updated++
-			}
-			continue
-		}
-		res.Active++
-		if s.Issue == nil {
-			res.NoIssue++
-			if env.GHClient != nil {
-				if err := EnsureIssue(ctx, env, r, s); err != nil {
-					res.Errors++
-					continue
-				}
-				res.Created++
-			}
-		}
-	}
-
-	return res, nil
+	return reconcileIssues(ctx, env, r), nil
 }
 
 // EnsureIssue 为脚本确保有关联 Issue（新建或更新）。
