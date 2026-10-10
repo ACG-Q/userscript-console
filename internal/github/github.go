@@ -320,3 +320,13 @@ func (c *Client) DeleteCommentByNumber(ctx context.Context, id int64) error {
 	return c.restRequest(ctx, http.MethodDelete,
 		fmt.Sprintf("/repos/%s/%s/issues/comments/%d", c.owner, c.name, id), nil)
 }
+
+// CreateIssueComment 以 REST 在 Issue 下新建评论（设计 D7：执行结果回帖）。
+func (c *Client) CreateIssueComment(ctx context.Context, issue int, body string) error {
+	if issue <= 0 {
+		return errors.New("github: issue 号必须为正整数")
+	}
+	return c.restRequest(ctx, http.MethodPost,
+		fmt.Sprintf("/repos/%s/%s/issues/%d/comments", c.owner, c.name, issue),
+		map[string]string{"body": body})
+}

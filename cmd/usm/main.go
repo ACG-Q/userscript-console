@@ -216,6 +216,13 @@ func runCommandRun(args []string) int {
 		return 2
 	}
 
+	// 执行回帖开关（设计 D7，默认 true）：--post-reply > env POST_REPLY > 默认。
+	postReply, err := parsePostReply(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return 2
+	}
+
 	issueNum, err := parseIssueNumber(flags.IssueNumber)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: --issue-number 必须是整数: %v\n", err)
@@ -241,7 +248,7 @@ func runCommandRun(args []string) int {
 	if issueNum != controlIssueNumber {
 		return emitCommandResult(commands.Result{
 			Text: fmt.Sprintf("非命令面板 Issue #%d，忽略执行", issueNum),
-		}, false, flags)
+		}, false, flags, issueNum, postReply, nil)
 	}
 
 	// 门禁 2：评论者必须是仓库所有者；owner 未配置时 fail-open（本地/无仓场景）。
@@ -251,7 +258,7 @@ func runCommandRun(args []string) int {
 			// 未授权命令由 usm 自删触发评论（设计 D7，合并 gate.py）；
 			// 删除失败只记 warning，不改退出码。
 			Warnings: deleteGateComment(context.Background(), commentID),
-		}, false, flags)
+		}, false, flags, issueNum, postReply, nil)
 	}
 
 	env := &commands.Env{
@@ -282,7 +289,11 @@ func runCommandRun(args []string) int {
 		return 1
 	}
 
-	return emitCommandResult(res, true, flags)
+	var ghc *github.Client
+	if postReply {
+		ghc = newGHClient()
+	}
+	return emitCommandResult(res, true, flags, issueNum, postReply, ghc)
 }
 
 // controlIssueNumber 命令面板 Issue 号（SPEC-CLI §1 判定顺序第 1 步）。
@@ -309,8 +320,45 @@ func deleteGateComment(ctx context.Context, commentID int64) []string {
 	return nil
 }
 
-// emitCommandResult 输出 run-command 结果并落 --result-file 兼容层（SPEC-CLI §1）。
-func emitCommandResult(res commands.Result, authorized bool, flags cli.RunCommandFlags) int {
+// parsePostReply 解析执行回帖开关（设计 D7）：--post-reply 独立出现即 true，
+// --post-reply=false/0 可显式关；无 flag 时读 env POST_REPLY；都缺省 → 默认 true。
+func parsePostReply(args []string) (bool, error) {
+	for _, a := range args {
+		if a == "--post-reply" {
+			return true, nil
+		}
+		if strings.HasPrefix(a, "--post-reply=") {
+			return parseBoolWord(strings.TrimPrefix(a, "--post-reply="))
+		}
+	}
+	if v := strings.TrimSpace(cli.EnvOr("POST_REPLY", "")); v != "" {
+		return parseBoolWord(v)
+	}
+	return true, nil
+}
+
+func parseBoolWord(v string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "true", "1", "yes", "on":
+		return true, nil
+	case "false", "0", "no", "off":
+		return false, nil
+	}
+	return false, fmt.Errorf("布尔值非法: %q（可用 true/false/1/0）", v)
+}
+
+// emitCommandResult 输出 run-command 结果：先回帖（若启用），再 emit 与落 --result-file。
+// 回帖（设计 D7，合并 reply.py）：postReply && authorized && 结果非空 && GitHub 已配置
+// → POST **执行结果：** + 正文；回帖失败只记 warning，不改退出码。
+// 未授权只删评不回帖（emitCommandResult 的 authorized=false 分支不发帖）。
+func emitCommandResult(res commands.Result, authorized bool, flags cli.RunCommandFlags,
+	issueNum int, postReply bool, ghc *github.Client) int {
+	if postReply && authorized && res.Text != "" && ghc != nil {
+		body := "**执行结果：**\n" + res.Text
+		if err := ghc.CreateIssueComment(context.Background(), issueNum, body); err != nil {
+			res.Warnings = append(res.Warnings, "回帖失败: "+err.Error())
+		}
+	}
 	if rc := emitResultAuth(res, authorized, flags.JSON); rc != 0 {
 		return rc
 	}
