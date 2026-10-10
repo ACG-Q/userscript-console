@@ -14,10 +14,12 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	stdhtml "html"
 	"html/template"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -138,7 +140,13 @@ func Build(reg *registry.Registry, opts Options, data Data) (Outcome, error) {
 		if dp.dir != "" {
 			root = "../../index.html"
 		}
-		d := docsData{Title: dp.title, TOC: docPages.tocFrom(dp), Content: template.HTML(RenderMarkdown(dp.content))}
+		bodyHTML := RenderMarkdown(dp.content)
+		d := docsData{
+			Title:   dp.title,
+			TOC:     docPages.tocFrom(dp),
+			PageTOC: extractPageTOC(bodyHTML),
+			Content: template.HTML(bodyHTML),
+		}
 		h, err := r.renderPage(dp.title, "docs", d, nil, root)
 		if err != nil {
 			return out, err
@@ -463,9 +471,42 @@ type docTOCEntry struct {
 	Name string
 }
 
+// docAnchor 正文 h2 锚点：右栏「本页目录」条目。
+type docAnchor struct {
+	ID   string
+	Name string
+}
+
+var (
+	h2Re  = regexp.MustCompile(`<h2 id="([^"]+)">([\s\S]*?)</h2>`)
+	tagRe = regexp.MustCompile(`<[^>]*>`)
+)
+
+// extractPageTOC 从渲染消毒后的正文提取 h2 锚点；不足 2 节不设目录
+// （模板据 PageTOC 空值整栏不渲染）。
+func extractPageTOC(docHTML string) []docAnchor {
+	ms := h2Re.FindAllStringSubmatch(docHTML, -1)
+	if len(ms) < 2 {
+		return nil
+	}
+	toc := make([]docAnchor, 0, len(ms))
+	for _, m := range ms {
+		name := strings.TrimSpace(tagRe.ReplaceAllString(m[2], ""))
+		if name == "" {
+			continue
+		}
+		toc = append(toc, docAnchor{ID: m[1], Name: stdhtml.UnescapeString(name)})
+	}
+	if len(toc) < 2 {
+		return nil
+	}
+	return toc
+}
+
 type docsData struct {
 	Title   string
 	TOC     []docTOCEntry
+	PageTOC []docAnchor
 	Content template.HTML
 }
 

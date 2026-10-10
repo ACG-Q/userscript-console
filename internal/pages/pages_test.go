@@ -1358,3 +1358,27 @@ func TestLoadDocsStripsLeadingH1(t *testing.T) {
 		t.Errorf("正文应保留, got %q", pages[0].content)
 	}
 }
+
+// ── 本页目录（右栏） ────────────────────────────────────────
+
+// TestExtractPageTOC h2 锚点提取：剥内联标签、反转义、不足 2 节置空。
+func TestExtractPageTOC(t *testing.T) {
+	src := `<p>导语</p><h2 id="usage">用法</h2><p>x</p><h2 id="opt"><code>-o</code> 选项</h2>`
+	got := extractPageTOC(src)
+	if len(got) != 2 {
+		t.Fatalf("应提取 2 个锚点, got %d: %+v", len(got), got)
+	}
+	if got[0].ID != "usage" || got[0].Name != "用法" {
+		t.Errorf("锚点 0 = %+v, want {usage 用法}", got[0])
+	}
+	if got[1].ID != "opt" || got[1].Name != "-o 选项" {
+		t.Errorf("应剥除内联标签, got %+v", got[1])
+	}
+	if toc := extractPageTOC(`<h2 id="only">仅一节</h2>`); toc != nil {
+		t.Errorf("不足 2 节应为 nil, got %+v", toc)
+	}
+	escaped := extractPageTOC(`<h2 id="a">A &amp; B</h2><h2 id="b">b</h2>`)
+	if len(escaped) != 2 || escaped[0].Name != "A & B" {
+		t.Errorf("HTML 实体应反转义（模板会再转义一次）, got %+v", escaped)
+	}
+}
