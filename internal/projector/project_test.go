@@ -34,6 +34,8 @@ type multiRespDoer struct {
 	resps     []string
 	calls     int
 	lastQuery string
+	queries   []string       // 全部查询文档（调用序断言）
+	lastVars  map[string]any // 最近一次 variables
 }
 
 func (m *multiRespDoer) Do(req *http.Request) (*http.Response, error) {
@@ -42,6 +44,8 @@ func (m *multiRespDoer) Do(req *http.Request) (*http.Response, error) {
 	_ = json.Unmarshal(b, &m2)
 	q, _ := m2["query"].(string)
 	m.lastQuery = q
+	m.queries = append(m.queries, q)
+	m.lastVars, _ = m2["variables"].(map[string]any)
 
 	idx := m.calls
 	m.calls++
@@ -138,141 +142,6 @@ func TestProjectNilGHClient(t *testing.T) {
 	}
 	if res.Active != 1 {
 		t.Errorf("Active = %d, want 1", res.Active)
-	}
-}
-
-// ── TestEnsureIssueCreate ─────────────────────────────────────
-
-func TestEnsureIssueCreate(t *testing.T) {
-	d := &multiRespDoer{t: t, resps: []string{
-		// 1. ListRepoIssues（空列表）
-		`{"data":{"repository":{"issues":{"totalCount":0,"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}}}}`,
-		// 2. repoID（CreateIssue 内部调用）
-		`{"data":{"repository":{"id":"R_1","nameWithOwner":"o/r","issue":null}}}`,
-		// 3. CreateIssue
-		`{"data":{"createIssue":{"issue":{"id":"I_new","number":42,"state":"OPEN","title":"T","body":"B","createdAt":"2026-01-01T00:00:00Z"}}}}`,
-	}}
-	ghc := newTestGHClient(t, d)
-	r := &registry.Registry{Schema: registry.SchemaVersion}
-	s := &registry.Script{
-		ID: "new01", Name: "新脚本", Version: "1.0.0",
-		Type: registry.TypeSelf, Enabled: true, Deleted: false,
-		Changelog: []registry.ChangelogEntry{{Version: "1.0.0", Date: "2026-01-01", Note: "init"}},
-	}
-	env := &Env{Root: "/tmp", RepoOwner: "o", RepoName: "o/r", PagesBase: "https://test.github.io/repo", GHClient: ghc}
-	err := EnsureIssue(context.Background(), env, r, s)
-	if err != nil {
-		t.Fatalf("EnsureIssue 应成功: %v (query=%q)", err, d.lastQuery)
-	}
-	if s.Issue == nil {
-		t.Fatal("Issue 应被设置")
-	}
-	if s.Issue.Number != 42 {
-		t.Errorf("Number = %d, want 42", s.Issue.Number)
-	}
-	if s.Issue.NodeID != "I_new" {
-		t.Errorf("NodeID = %q, want I_new", s.Issue.NodeID)
-	}
-	if s.Issue.URL != "https://github.com/o/r/issues/42" {
-		t.Errorf("URL = %q, want https://github.com/o/r/issues/42", s.Issue.URL)
-	}
-}
-
-// ── TestEnsureIssueURLFallsBackToRepoOwner ────────────────────
-
-func TestEnsureIssueURLFallsBackToRepoOwner(t *testing.T) {
-	d := &multiRespDoer{t: t, resps: []string{
-		// 1. ListRepoIssues 空
-		`{"data":{"repository":{"issues":{"totalCount":0,"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}}}}`,
-		// 2. repoID（CreateIssue 内部调用）
-		`{"data":{"repository":{"id":"R_1","nameWithOwner":"o/r","issue":null}}}`,
-		// 3. CreateIssue
-		`{"data":{"createIssue":{"issue":{"id":"I_new","number":9,"state":"OPEN","title":"T","body":"B","createdAt":"2026-01-01T00:00:00Z"}}}}`,
-	}}
-	ghc := newTestGHClient(t, d)
-	r := &registry.Registry{Schema: registry.SchemaVersion}
-	s := &registry.Script{
-		ID: "fb01", Name: "回退脚本", Version: "1.0.0",
-		Type: registry.TypeSelf, Enabled: true, Deleted: false,
-		Changelog: []registry.ChangelogEntry{{Version: "1.0.0", Date: "2026-01-01", Note: "init"}},
-	}
-	env := &Env{Root: "/tmp", RepoOwner: "o", GHClient: ghc}
-	err := EnsureIssue(context.Background(), env, r, s)
-	if err != nil {
-		t.Fatalf("EnsureIssue 应成功: %v (query=%q)", err, d.lastQuery)
-	}
-	if s.Issue == nil {
-		t.Fatal("Issue 应被设置")
-	}
-	if s.Issue.URL != "https://github.com/o/issues/9" {
-		t.Errorf("RepoName 为空时应回退 RepoOwner: URL = %q, want https://github.com/o/issues/9", s.Issue.URL)
-	}
-}
-
-// ── TestEnsureIssueUpdate ─────────────────────────────────────
-
-func TestEnsureIssueUpdate(t *testing.T) {
-	d := &multiRespDoer{t: t, resps: []string{
-		// 1. ListRepoIssues（含匹配标题的 issue）
-		`{"data":{"repository":{"issues":{"totalCount":1,"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[{"id":"I_old","number":7,"state":"OPEN","title":"[新脚本] v1.0.0","body":"B","createdAt":"2026-01-01T00:00:00Z"}]}}}}`,
-		// 2. UpdateIssue
-		`{"data":{"updateIssue":{"issue":{"id":"I_old","number":7,"state":"OPEN"}}}}`,
-	}}
-	ghc := newTestGHClient(t, d)
-	r := &registry.Registry{Schema: registry.SchemaVersion}
-	s := &registry.Script{
-		ID: "new01", Name: "新脚本", Version: "1.1.0",
-		Type: registry.TypeSelf, Enabled: true, Deleted: false,
-		Changelog: []registry.ChangelogEntry{{Version: "1.1.0", Date: "2026-01-02", Note: "修复"}},
-	}
-	env := &Env{Root: "/tmp", RepoOwner: "o", PagesBase: "", GHClient: ghc}
-	err := EnsureIssue(context.Background(), env, r, s)
-	if err != nil {
-		t.Fatalf("EnsureIssue 应成功: %v (query=%q)", err, d.lastQuery)
-	}
-	if s.Issue.Number != 7 {
-		t.Errorf("Number = %d, want 7", s.Issue.Number)
-	}
-	if s.Issue.NodeID != "I_old" {
-		t.Errorf("NodeID = %q, want I_old", s.Issue.NodeID)
-	}
-}
-
-// ── TestEnsureIssueListError ──────────────────────────────────
-
-func TestEnsureIssueListError(t *testing.T) {
-	d := &multiRespDoer{t: t, resps: []string{
-		// 1. ListRepoIssues 失败
-		`{"errors":[{"message":"forbidden"}]}`,
-	}}
-	ghc := newTestGHClient(t, d)
-	r := &registry.Registry{Schema: registry.SchemaVersion}
-	s := &registry.Script{ID: "s1", Name: "x", Version: "1.0.0", Type: registry.TypeSelf, Enabled: true, Deleted: false}
-	env := &Env{Root: "/tmp", RepoOwner: "o", GHClient: ghc}
-	err := EnsureIssue(context.Background(), env, r, s)
-	if err == nil {
-		t.Fatal("EnsureIssue 列表失败应返回 error")
-	}
-}
-
-// ── TestEnsureIssueCreateError ────────────────────────────────
-
-func TestEnsureIssueCreateError(t *testing.T) {
-	d := &multiRespDoer{t: t, resps: []string{
-		// 1. ListRepoIssues 空
-		`{"data":{"repository":{"issues":{"totalCount":0,"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}}}}`,
-		// 2. repoID
-		`{"data":{"repository":{"id":"R_1","nameWithOwner":"o/r","issue":null}}}`,
-		// 3. CreateIssue 失败
-		`{"errors":[{"message":"title required"}]}`,
-	}}
-	ghc := newTestGHClient(t, d)
-	r := &registry.Registry{Schema: registry.SchemaVersion}
-	s := &registry.Script{ID: "s1", Name: "x", Version: "1.0.0", Type: registry.TypeSelf, Enabled: true, Deleted: false}
-	env := &Env{Root: "/tmp", RepoOwner: "o", GHClient: ghc}
-	err := EnsureIssue(context.Background(), env, r, s)
-	if err == nil {
-		t.Fatal("EnsureIssue 创建失败应返回 error")
 	}
 }
 

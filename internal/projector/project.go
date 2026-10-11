@@ -56,54 +56,6 @@ func Project(ctx context.Context, env *Env, r *registry.Registry) (Result, error
 	return reconcileIssues(ctx, env, r), nil
 }
 
-// EnsureIssue 为脚本确保有关联 Issue（新建或更新）。
-// 注意：此函数不保存 registry，调用方需自行保存。
-func EnsureIssue(ctx context.Context, env *Env, r *registry.Registry, s *registry.Script) error {
-	if env.GHClient == nil {
-		return fmt.Errorf("GHClient 未配置")
-	}
-
-	existing, err := env.GHClient.ListRepoIssues(ctx, "OPEN")
-	if err != nil {
-		return fmt.Errorf("列出 Issue 失败: %w", err)
-	}
-
-	titlePrefix := fmt.Sprintf("[%s]", s.Name)
-	var matched *github.Issue
-	for i := range existing {
-		if strings.HasPrefix(existing[i].Title, titlePrefix) {
-			matched = &existing[i]
-			break
-		}
-	}
-
-	issueBody := BuildIssueBody(s, env.PagesBase, env.distSeg())
-
-	if matched != nil {
-		if err := env.GHClient.UpdateIssue(ctx, matched.NodeID, titlePrefix+" v"+s.Version, issueBody); err != nil {
-			return fmt.Errorf("更新 Issue #%d 失败: %w", matched.Number, err)
-		}
-		s.Issue = &registry.IssueRef{
-			Number: matched.Number,
-			NodeID: matched.NodeID,
-			URL:    issueURL(env, matched.Number),
-		}
-	} else {
-		iss, err := env.GHClient.CreateIssue(ctx, titlePrefix+" v"+s.Version, issueBody)
-		if err != nil {
-			return fmt.Errorf("创建 Issue 失败: %w", err)
-		}
-		s.Issue = &registry.IssueRef{
-			Number: iss.Number,
-			NodeID: iss.NodeID,
-			URL:    issueURL(env, iss.Number),
-		}
-	}
-
-	s.UpdatedAt = nowRFC3339()
-	return nil
-}
-
 // TombstoneIssue 将 Issue 标记为墓碑。
 func TombstoneIssue(ctx context.Context, ghc *github.Client, nodeID string) error {
 	if ghc == nil {
