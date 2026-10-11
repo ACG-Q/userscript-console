@@ -27,6 +27,7 @@ type Comment struct {
 	Author    string
 	Body      string
 	CreatedAt string
+	Replies   []Comment
 }
 
 type Category struct {
@@ -87,6 +88,9 @@ type gqlComment struct {
 	} `json:"author"`
 	Body      string `json:"body"`
 	CreatedAt string `json:"createdAt"`
+	Replies   *struct {
+		Nodes []gqlComment `json:"nodes"`
+	} `json:"replies"`
 }
 
 func (g gqlComment) toComment() (Comment, error) {
@@ -96,6 +100,15 @@ func (g gqlComment) toComment() (Comment, error) {
 	c := Comment{NodeID: g.ID, Body: g.Body, CreatedAt: g.CreatedAt}
 	if g.Author != nil {
 		c.Author = g.Author.Login
+	}
+	if g.Replies != nil {
+		for _, r := range g.Replies.Nodes {
+			rc, err := r.toComment()
+			if err != nil {
+				return Comment{}, err
+			}
+			c.Replies = append(c.Replies, rc)
+		}
 	}
 	return c, nil
 }

@@ -616,6 +616,49 @@ func TestDiscussion系列(t *testing.T) {
 			t.Errorf("cursor: %#v", d.recs[1].Vars)
 		}
 	})
+	t.Run("嵌套回复", func(t *testing.T) {
+		d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{"node": map[string]any{
+			"__typename": "Discussion", "id": "D_1",
+			"comments": map[string]any{
+				"pageInfo": map[string]any{"hasNextPage": false, "endCursor": ""},
+				"nodes": []any{map[string]any{
+					"id": "DCM_1", "author": map[string]any{"login": "u1"}, "body": "顶层", "createdAt": "c1",
+					"replies": map[string]any{"nodes": []any{
+						map[string]any{"id": "DR_1", "author": map[string]any{"login": "u2"}, "body": "回复1", "createdAt": "c2"},
+						map[string]any{"id": "DR_2", "body": "回复2-无作者", "createdAt": "c3"},
+					}},
+				}},
+			},
+		}}), nil}}}
+		c := newTestClient(t, d)
+		th, err := c.DiscThread(context.Background(), "D_1")
+		if err != nil || len(th.Comments) != 1 {
+			t.Fatalf("comments=%v err=%v", th.Comments, err)
+		}
+		rs := th.Comments[0].Replies
+		if len(rs) != 2 || rs[0].NodeID != "DR_1" || rs[0].Author != "u2" || rs[0].Body != "回复1" {
+			t.Errorf("回复解析错误: %+v", rs)
+		}
+		if rs[1].Author != "" || rs[1].Body != "回复2-无作者" {
+			t.Errorf("无作者回复应留空: %+v", rs[1])
+		}
+	})
+	t.Run("回复缺id报错", func(t *testing.T) {
+		d := &fakeDoer{t: t, resps: []resp{{200, okBody(t, map[string]any{"node": map[string]any{
+			"__typename": "Discussion", "id": "D_1",
+			"comments": map[string]any{
+				"pageInfo": map[string]any{"hasNextPage": false, "endCursor": ""},
+				"nodes": []any{map[string]any{
+					"id": "DCM_1", "body": "顶层", "createdAt": "c1",
+					"replies": map[string]any{"nodes": []any{map[string]any{"body": "无id回复", "createdAt": "c2"}}},
+				}},
+			},
+		}}), nil}}}
+		c := newTestClient(t, d)
+		if _, err := c.DiscThread(context.Background(), "D_1"); err == nil {
+			t.Fatal("回复缺 id 应报错")
+		}
+	})
 }
 
 // ── WithEndpoint ──────────────────────────────────────────────
