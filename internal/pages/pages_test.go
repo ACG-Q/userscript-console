@@ -1039,6 +1039,38 @@ func TestDetailReplies(t *testing.T) {
 	}
 }
 
+// TestDetailQuotedBody 正文 > 前缀（trim 后）渲染引用样式，顶层与嵌套回复一致（spec §2.2）。
+func TestDetailQuotedBody(t *testing.T) {
+	reg := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{{
+		ID: "q01", Type: registry.TypeSelf, Name: "引用", Version: "1.0.0", Enabled: true,
+		Match: []string{"*://*/*"},
+		Discussions: []registry.DiscussionEntry{
+			{Version: "1.0.0", Number: 1, NodeID: "D_q", URL: "https://github.com/o/r/discussions/2", CreatedAt: "2026-10-01"},
+		},
+	}}}
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	out, err := Build(reg, Options{Out: outDir, Now: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)}, Data{Discussions: map[string]Thread{
+		"D_q": {Comments: []Comment{
+			{
+				Author: "u1", Body: "  > 引用内容", CreatedAt: "2026-10-01T00:00:00Z",
+				Replies: []Comment{{Author: "u2", Body: "> 回复引用", CreatedAt: "2026-10-02T00:00:00Z"}},
+			},
+			{Author: "u3", Body: "普通正文", CreatedAt: "2026-10-03T00:00:00Z"},
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := out.DetailHTMLs["q01"]
+	if got := strings.Count(html, `class="quoted"`); got != 2 {
+		t.Errorf("顶层与回复各一处 quoted 类，got %d:\n%s", got, html)
+	}
+	if !strings.Contains(html, `<p>普通正文</p>`) {
+		t.Errorf("普通正文不应带 quoted 类:\n%s", html)
+	}
+}
+
 // TestDetailFallbackPanel 详情页无帖时的回退面板（设计 §2 详情 fallback）。
 func TestDetailFallbackPanel(t *testing.T) {
 	outDir := isolatedOut(t)

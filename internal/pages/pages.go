@@ -417,6 +417,7 @@ type cmtView struct {
 	Author  string
 	Time    string
 	Body    string
+	Quoted  bool
 	Replies []cmtView
 }
 
@@ -457,6 +458,7 @@ func newCmtView(c Comment, now time.Time) cmtView {
 		Author: who,
 		Time:   times.RelativeTime(c.CreatedAt, now),
 		Body:   times.Clip(c.Body, 400),
+		Quoted: strings.HasPrefix(strings.TrimSpace(c.Body), ">"),
 	}
 	for _, r := range c.Replies {
 		v.Replies = append(v.Replies, newCmtView(r, now))

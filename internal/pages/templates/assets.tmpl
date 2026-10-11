@@ -218,8 +218,15 @@ main { padding: 8px 28px 36px; }
 .cmt.owner b::after { content: "· 仓库所有者"; color: var(--success); font-weight: 600; margin-left: 6px; font-size: 12px; }
 .cmt-who { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .answer-tag { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--success-bg); color: var(--success); white-space: nowrap; }
-.cmt-replies { grid-column: 1 / -1; margin: 6px 0 0 14px; padding-left: 12px; border-left: 2px solid var(--border); }
-.cmt-replies .cmt:first-child { border-top: none; padding-top: 8px; }
+.cmt-replies { grid-column: 1 / -1; margin: 8px 0 0; padding: 2px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+.cmt-replies .cmt { border-top: none; padding: 8px 0; font-size: 13px; }
+.cmt-replies .cmt + .cmt { border-top: 1px solid var(--border); }
+.cmt-replies .cmt:first-child { padding-top: 6px; }
+.cmt-replies .cmt:last-child { padding-bottom: 6px; }
+.cmt-replies .cmt b { font-size: 12.5px; }
+.cmt-replies .cmt time { font-size: 11.5px; }
+.cmt-replies .cmt-replies { margin: 6px 0 0; padding: 0 0 0 10px; background: none; border: none; border-left: 2px solid var(--border); border-radius: 0; }
+.cmt p.quoted { padding: 2px 0 2px 10px; border-left: 3px solid var(--border-strong); color: var(--text-muted); }
 .d-disc .btn { margin-top: 12px; }
 
 /* --- 版本帖切换（详情页评论区） --- */
@@ -667,6 +674,7 @@ document.querySelectorAll('.chip').forEach(function (btn) {
     el.appendChild(t);
     var p = document.createElement('p');
     p.textContent = c.body || '';
+    if ((c.body || '').trim().charAt(0) === '>') p.className = 'quoted';
     el.appendChild(p);
     var replies = c.replies || [];
     if (replies.length) {
@@ -818,7 +826,7 @@ document.querySelectorAll('.chip').forEach(function (btn) {
 {{define "status-badge"}}{{if .Enabled}}<span class="status" data-tip="脚本已启用，安装链接可用"><span class="dot" aria-hidden="true"></span>启用</span>{{else}}<span class="status off" data-tip="脚本已禁用，暂不可安装"><span class="dot" aria-hidden="true"></span>已禁用</span>{{end}}{{end}}
 {{define "issue-badges"}}{{if .Answered}}<span class="badge" data-tip="讨论已被标记为已解决">{{template "icon-check"}}已解决</span><span class="badge plain" data-tip="讨论回复总数">{{.ReplyCount}} 条回复</span>{{else if eq .ReplyCount 0}}<span class="badge plain" data-tip="该讨论还没有回复">0 条回复</span>{{else}}<span class="badge plain" data-tip="讨论尚未标记为已解决">{{.ReplyCount}} 条回复 · 待解决</span>{{end}}{{end}}
 {{define "post-badges"}}{{if .Answered}}<span class="badge" data-tip="该版本帖已被标记为已解决">{{template "icon-check"}}已解决</span><span class="badge plain" data-tip="讨论回复总数">{{.ReplyCount}} 条回复</span>{{else if eq .ReplyCount 0}}<span class="badge plain" data-tip="该版本帖还没有评论">0 条回复</span>{{else}}<span class="badge plain" data-tip="讨论尚未标记为已解决">{{.ReplyCount}} 条回复 · 待解决</span>{{end}}{{end}}
-{{define "cmt"}}<div class="cmt"><span class="cmt-who"><b>{{.Author}}</b></span><time>{{.Time}}</time><p>{{.Body}}</p>{{if .Replies}}<div class="cmt-replies">{{range .Replies}}{{template "cmt" .}}{{end}}</div>{{end}}</div>{{end}}
+{{define "cmt"}}<div class="cmt"><span class="cmt-who"><b>{{.Author}}</b></span><time>{{.Time}}</time><p{{if .Quoted}} class="quoted"{{end}}>{{.Body}}</p>{{if .Replies}}<div class="cmt-replies">{{range .Replies}}{{template "cmt" .}}{{end}}</div>{{end}}</div>{{end}}
 {{define "script-card"}}<article class="script-card" data-type="{{.Type}}">
 <div class="sc-main">
 <div class="sc-title"><h3>{{.Name}}</h3>{{template "type-pill" .}}{{template "version-pill" .}}{{template "status-badge" .}}</div>
