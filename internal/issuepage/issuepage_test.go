@@ -209,7 +209,7 @@ func TestTombstone无marker(t *testing.T) {
 func TestDiscussion标题与正文(t *testing.T) {
 	s := sampleScript()
 	title := DiscussionTitle(s, "1.2.3")
-	if title != "示例脚本 · v1.2.3 版本讨论" {
+	if title != "[1.2.3] 示例脚本 版本讨论" {
 		t.Errorf("标题 = %q", title)
 	}
 	body := DiscussionBody(s, "1.2.3")

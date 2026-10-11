@@ -157,9 +157,9 @@ func TombstoneBody(s registry.Script) string {
 	return b.String()
 }
 
-// DiscussionTitle 版本帖标题。
+// DiscussionTitle 版本帖标题：[版本号] 脚本名称 版本讨论。
 func DiscussionTitle(s registry.Script, version string) string {
-	return s.Name + " · v" + version + " 版本讨论"
+	return fmt.Sprintf("[%s] %s 版本讨论", version, s.Name)
 }
 
 // DiscussionBody 版本帖正文：不带 script marker；按 version 取 changelog 说明。
