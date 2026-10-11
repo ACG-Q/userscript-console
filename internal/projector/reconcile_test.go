@@ -18,9 +18,11 @@ func backfillScript() *registry.Script {
 	}
 }
 
-const emptyListResp = `{"data":{"repository":{"issues":{"totalCount":0,"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}}}}`
-const repoIDResp = `{"data":{"repository":{"id":"R_1","nameWithOwner":"o/r","issue":null}}}`
-const createOKResp = `{"data":{"createIssue":{"issue":{"id":"I_new","number":42,"state":"OPEN","title":"T","body":"B","createdAt":"2026-01-01T00:00:00Z"}}}}`
+const (
+	emptyListResp = `{"data":{"repository":{"issues":{"totalCount":0,"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}}}}`
+	repoIDResp    = `{"data":{"repository":{"id":"R_1","nameWithOwner":"o/r","issue":null}}}`
+	createOKResp  = `{"data":{"createIssue":{"issue":{"id":"I_new","number":42,"state":"OPEN","title":"T","body":"B","createdAt":"2026-01-01T00:00:00Z"}}}}`
+)
 
 // TestBackfillCreatesWhenNoMatch 未命中 → CreateIssue + Created++ + 写 ref + bump UpdatedAt。
 func TestBackfillCreatesWhenNoMatch(t *testing.T) {
@@ -50,8 +52,10 @@ func TestBackfillCreatesWhenNoMatch(t *testing.T) {
 
 // TestBackfillURLFallsBackToRepoOwner RepoName 为空时 URL 回退 RepoOwner。
 func TestBackfillURLFallsBackToRepoOwner(t *testing.T) {
-	d := &multiRespDoer{t: t, resps: []string{emptyListResp, repoIDResp,
-		`{"data":{"createIssue":{"issue":{"id":"I_new","number":9,"state":"OPEN","title":"T","body":"B","createdAt":"2026-01-01T00:00:00Z"}}}}`}}
+	d := &multiRespDoer{t: t, resps: []string{
+		emptyListResp, repoIDResp,
+		`{"data":{"createIssue":{"issue":{"id":"I_new","number":9,"state":"OPEN","title":"T","body":"B","createdAt":"2026-01-01T00:00:00Z"}}}}`,
+	}}
 	env := &Env{Root: "/tmp", RepoOwner: "o", GHClient: newTestGHClient(t, d)}
 	s := backfillScript()
 	var res Result
@@ -141,8 +145,10 @@ func TestBackfillListErrorCountsError(t *testing.T) {
 
 // TestBackfillCreateErrorCountsError 创建失败 → 返回 error。
 func TestBackfillCreateErrorCountsError(t *testing.T) {
-	d := &multiRespDoer{t: t, resps: []string{emptyListResp, repoIDResp,
-		`{"errors":[{"message":"title required"}]}`}}
+	d := &multiRespDoer{t: t, resps: []string{
+		emptyListResp, repoIDResp,
+		`{"errors":[{"message":"title required"}]}`,
+	}}
 	env := &Env{Root: "/tmp", RepoOwner: "o", GHClient: newTestGHClient(t, d)}
 	s := backfillScript()
 	var res Result
