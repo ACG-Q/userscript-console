@@ -696,6 +696,24 @@ footer.foot a { font-weight: 600; }
   uc.addEventListener('mouseleave', ucScheduleHide);
   window.addEventListener('scroll', function () { if (ucActive) ucPlace(ucActive); }, { passive: true });
 
+  
+  function ucAvatarOf(e) {
+    var el = e.target && e.target.closest ? e.target.closest('.cmt-av') : null;
+    if (el && el.dataset.login && !el.contains(e.relatedTarget)) return el;
+    return null;
+  }
+  document.addEventListener('mouseover', function (e) {
+    var el = ucAvatarOf(e);
+    if (!el) return;
+    clearTimeout(ucShowT);
+    ucShowT = setTimeout(function () { ucShow(el); }, 200);
+  });
+  document.addEventListener('mouseout', function (e) {
+    if (!ucAvatarOf(e)) return;
+    clearTimeout(ucShowT);
+    ucScheduleHide();
+  });
+
   function avatarEl(name, url) {
     var s = document.createElement('span');
     s.className = 'cmt-av';
@@ -714,8 +732,6 @@ footer.foot a { font-weight: 600; }
       img.onerror = function () { img.remove(); };
       s.appendChild(img);
     }
-    s.addEventListener('mouseenter', function () { clearTimeout(ucShowT); ucShowT = setTimeout(function () { ucShow(s); }, 200); });
-    s.addEventListener('mouseleave', function () { clearTimeout(ucShowT); ucScheduleHide(); });
     return s;
   }
 
