@@ -418,6 +418,8 @@ type cmtView struct {
 	Time    string
 	Body    string
 	Quoted  bool
+	Avatar  string
+	Initial string
 	Replies []cmtView
 }
 
@@ -437,6 +439,7 @@ type discPayloadComment struct {
 	Author  string               `json:"author"`
 	Time    string               `json:"time"`
 	Body    string               `json:"body"`
+	Quoted  bool                 `json:"quoted,omitempty"`
 	Replies []discPayloadComment `json:"replies,omitempty"`
 }
 
@@ -454,11 +457,23 @@ func newCmtView(c Comment, now time.Time) cmtView {
 	if who == "" {
 		who = "未知用户"
 	}
+	body := strings.TrimSpace(times.Clip(c.Body, 400))
+	quoted := strings.HasPrefix(body, ">")
+	if quoted {
+		body = stripQuoteMarkers(body)
+	}
+	initial := "?"
+	for _, r := range who {
+		initial = string(r)
+		break
+	}
 	v := cmtView{
-		Author: who,
-		Time:   times.RelativeTime(c.CreatedAt, now),
-		Body:   times.Clip(c.Body, 400),
-		Quoted: strings.HasPrefix(strings.TrimSpace(c.Body), ">"),
+		Author:  who,
+		Time:    times.RelativeTime(c.CreatedAt, now),
+		Body:    body,
+		Quoted:  quoted,
+		Avatar:  avatarClass(who),
+		Initial: initial,
 	}
 	for _, r := range c.Replies {
 		v.Replies = append(v.Replies, newCmtView(r, now))
@@ -466,8 +481,26 @@ func newCmtView(c Comment, now time.Time) cmtView {
 	return v
 }
 
+// stripQuoteMarkers 剥离每行行首的 ">"/"> " 引用符号（GitHub 引用粘贴场景）。
+func stripQuoteMarkers(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, ln := range lines {
+		lines[i] = strings.TrimPrefix(strings.TrimPrefix(ln, ">"), " ")
+	}
+	return strings.Join(lines, "\n")
+}
+
+// avatarClass 作者名 rune 码点和 %5 → av0..av4（与前端 JS 同算法，SSR/切帖一致）。
+func avatarClass(name string) string {
+	sum := 0
+	for _, r := range name {
+		sum += int(r)
+	}
+	return "av" + strconv.Itoa(sum%5)
+}
+
 func newPayloadComment(c cmtView) discPayloadComment {
-	p := discPayloadComment{Author: c.Author, Time: c.Time, Body: c.Body}
+	p := discPayloadComment{Author: c.Author, Time: c.Time, Body: c.Body, Quoted: c.Quoted}
 	for _, r := range c.Replies {
 		p.Replies = append(p.Replies, newPayloadComment(r))
 	}

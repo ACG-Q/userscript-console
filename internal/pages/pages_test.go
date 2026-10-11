@@ -1039,7 +1039,7 @@ func TestDetailReplies(t *testing.T) {
 	}
 }
 
-// TestDetailQuotedBody 正文 > 前缀（trim 后）渲染引用样式，顶层与嵌套回复一致（spec §2.2）。
+// TestDetailQuotedBody 正文 > 前缀（trim 后）剥离引用符并渲染引用样式；payload 带 quoted（spec §2.3）。
 func TestDetailQuotedBody(t *testing.T) {
 	reg := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{{
 		ID: "q01", Type: registry.TypeSelf, Name: "引用", Version: "1.0.0", Enabled: true,
@@ -1066,8 +1066,52 @@ func TestDetailQuotedBody(t *testing.T) {
 	if got := strings.Count(html, `class="quoted"`); got != 2 {
 		t.Errorf("顶层与回复各一处 quoted 类，got %d:\n%s", got, html)
 	}
+	if !strings.Contains(html, `<p class="quoted">引用内容</p>`) || !strings.Contains(html, `<p class="quoted">回复引用</p>`) {
+		t.Errorf("引用符号应被剥离后进 quoted 段落:\n%s", html)
+	}
 	if !strings.Contains(html, `<p>普通正文</p>`) {
 		t.Errorf("普通正文不应带 quoted 类:\n%s", html)
+	}
+	start := strings.Index(html, `id="discData">`) + len(`id="discData">`)
+	end := strings.Index(html[start:], "</script>")
+	var payload []discPayloadPost
+	if err := json.Unmarshal([]byte(html[start:start+end]), &payload); err != nil {
+		t.Fatalf("discData 非法 JSON: %v", err)
+	}
+	if !payload[0].Comments[0].Quoted || !payload[0].Comments[0].Replies[0].Quoted {
+		t.Errorf("payload 引用评论应带 quoted: %+v", payload[0].Comments)
+	}
+	if payload[0].Comments[1].Quoted {
+		t.Errorf("普通评论 quoted 应 omitempty 为 false: %+v", payload[0].Comments[1])
+	}
+}
+
+// TestDetailAvatar 头像首字符与色相类（spec §2.2：名和 %5，SSR 稳定渲染）。
+func TestDetailAvatar(t *testing.T) {
+	reg := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{{
+		ID: "a01", Type: registry.TypeSelf, Name: "头像", Version: "1.0.0", Enabled: true,
+		Match: []string{"*://*/*"},
+		Discussions: []registry.DiscussionEntry{
+			{Version: "1.0.0", Number: 1, NodeID: "D_a", URL: "https://github.com/o/r/discussions/3", CreatedAt: "2026-10-01"},
+		},
+	}}}
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	out, err := Build(reg, Options{Out: outDir, Now: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)}, Data{Discussions: map[string]Thread{
+		"D_a": {Comments: []Comment{
+			{Author: "ACG-Q", Body: "首字 A", CreatedAt: "2026-10-01T00:00:00Z"},
+			{Author: "张三", Body: "中文首字", CreatedAt: "2026-10-02T00:00:00Z"},
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := out.DetailHTMLs["a01"]
+	if !strings.Contains(html, `<span class="cmt-av av4" aria-hidden="true">A</span>`) {
+		t.Errorf("ACG-Q 应渲染 av4 头像与首字符 A（65+67+71+45+81=329 %% 5=4）:\n%s", html)
+	}
+	if !strings.Contains(html, `aria-hidden="true">张</span>`) {
+		t.Errorf("中文作者应取首 rune 作头像字:\n%s", html)
 	}
 }
 
