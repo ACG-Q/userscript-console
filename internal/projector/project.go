@@ -94,11 +94,21 @@ func BuildIssueBody(s *registry.Script, pagesBase, distSeg string) string {
 		distURL := pagesBase + "/" + strings.Trim(strings.ReplaceAll(distSeg, `\`, "/"), "/") + "/" + s.ID + ".user.js"
 		fmt.Fprintf(&b, "| 分发 | [%s](%s) |\n", s.ID+".user.js", distURL)
 	}
-	b.WriteString("\n---\n\n**changelog**:\n\n| 版本 | 日期 | 说明 |\n|---|---|---|\n")
+	b.WriteString("\n---\n\n**changelog**:\n\n| 版本 | 日期 | 说明 | 帖子 |\n|---|---|---|---|\n")
 	for _, c := range s.Changelog {
-		fmt.Fprintf(&b, "| %s | %s | %s |\n", c.Version, c.Date, c.Note)
+		fmt.Fprintf(&b, "| v%s | %s | %s | %s |\n", c.Version, c.Date, c.Note, discussionLinkFor(s, c.Version))
 	}
 	return b.String()
+}
+
+// discussionLinkFor 版本 → 账本帖子链接；无条目返回 —。
+func discussionLinkFor(s *registry.Script, version string) string {
+	for _, d := range s.Discussions {
+		if d.Version == version {
+			return fmt.Sprintf("[讨论 #%d →](%s)", d.Number, d.URL)
+		}
+	}
+	return "—"
 }
 
 func scriptTypeLabel(t string) string {

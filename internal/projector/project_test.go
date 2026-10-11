@@ -225,6 +225,36 @@ func TestBuildIssueBodySynced(t *testing.T) {
 	}
 }
 
+// TestBuildIssueBodyDiscussionLinks 帖子列按账本匹配；未命中与无账本填 —（spec §2）。
+func TestBuildIssueBodyDiscussionLinks(t *testing.T) {
+	s := &registry.Script{
+		ID: "abc", Name: "MyScript", Version: "2.0.0", Type: registry.TypeSelf, Enabled: true,
+		Changelog: []registry.ChangelogEntry{
+			{Version: "1.0.0", Date: "2026-10-06", Note: "初始同步"},
+			{Version: "2.0.0", Date: "2026-10-12", Note: "修复"},
+		},
+		Discussions: []registry.DiscussionEntry{{
+			Version: "1.0.0", Number: 3, NodeID: "D_3", URL: "https://github.com/o/r/discussions/3",
+		}},
+	}
+	body := BuildIssueBody(s, "", "dist")
+	for _, want := range []string{
+		"| 版本 | 日期 | 说明 | 帖子 |",
+		"| v1.0.0 | 2026-10-06 | 初始同步 | [讨论 #3 →](https://github.com/o/r/discussions/3) |",
+		"| v2.0.0 | 2026-10-12 | 修复 | — |",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body 缺 %q:\n%s", want, body)
+		}
+	}
+	// 无账本 → 帖子列全 —
+	s2 := &registry.Script{ID: "x", Name: "X", Version: "1.0.0", Type: registry.TypeSelf,
+		Changelog: []registry.ChangelogEntry{{Version: "1.0.0", Date: "2026-01-01", Note: "n"}}}
+	if b := BuildIssueBody(s2, "", "dist"); !strings.Contains(b, "| v1.0.0 | 2026-01-01 | n | — |") {
+		t.Errorf("无账本应全 —:\n%s", b)
+	}
+}
+
 // ── TestTombstoneIssue ────────────────────────────────────────
 
 func TestTombstoneIssueSuccess(t *testing.T) {
