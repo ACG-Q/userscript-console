@@ -51,9 +51,13 @@ type Result struct {
 	Skipped  int // 账本末条==当前，跳过发帖数
 }
 
-// Project 对账投影：阶段一 Issue 对账；阶段二发帖在任务 5 接线。
+// Project 对账投影：阶段一 Issue 对账（回填/判等刷新），阶段二版本帖发牌（账本幂等）。
 func Project(ctx context.Context, env *Env, r *registry.Registry) (Result, error) {
-	return reconcileIssues(ctx, env, r), nil
+	res := reconcileIssues(ctx, env, r)
+	posted, skipped, errs := publishDiscussions(ctx, env, r)
+	res.Posted, res.Skipped = posted, skipped
+	res.Errors += errs
+	return res, nil
 }
 
 // TombstoneIssue 将 Issue 标记为墓碑。
