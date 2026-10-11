@@ -80,8 +80,8 @@ func TestPublishFailureNoLedgerAppend(t *testing.T) {
 	d := &multiRespDoer{t: t, resps: []string{
 		categoriesResp, repoIDResp,
 		`{"errors":[{"message":"server error"}]}`, // 脚本 a 发帖失败
-		createDiscResp,                             // 脚本 b 发帖成功（repoID 已缓存）
-		`{"data":{}}`,                               // 脚本 b 回写
+		createDiscResp, // 脚本 b 发帖成功（repoID 已缓存）
+		`{"data":{}}`,  // 脚本 b 回写
 	}}
 	env := &Env{Root: "/tmp", RepoOwner: "o", RepoName: "o/r", GHClient: newTestGHClient(t, d)}
 	r := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{
@@ -124,8 +124,8 @@ func TestPublishWritebackFailureNotCounted(t *testing.T) {
 	d := &multiRespDoer{t: t, resps: []string{
 		categoriesResp, repoIDResp, createDiscResp,
 		`{"errors":[{"message":"server error"}]}`, // 回写失败
-		createDiscResp,                             // 脚本 b 发帖成功（repoID 已缓存）
-		`{"data":{}}`,                               // 脚本 b 回写
+		createDiscResp, // 脚本 b 发帖成功（repoID 已缓存）
+		`{"data":{}}`,  // 脚本 b 回写
 	}}
 	env := &Env{Root: "/tmp", RepoOwner: "o", RepoName: "o/r", GHClient: newTestGHClient(t, d)}
 	r := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{

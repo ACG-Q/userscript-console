@@ -414,9 +414,9 @@ func TestRunProjectRefreshReopenPublish(t *testing.T) {
 			continue
 		}
 		s.Issue = &registry.IssueRef{Number: num, NodeID: fmt.Sprintf("I_%d", num), URL: fmt.Sprintf("https://github.com/o/r/issues/%d", num)}
+		s.Discussions = []registry.DiscussionEntry{{Version: s.Version, Number: 1, NodeID: "D_1"}}
 		title := fmt.Sprintf("[%s] v%s", s.Name, s.Version)
 		rules = append(rules, getIssueRule(num, issueCombinedResp(t, num, title, projector.BuildIssueBody(s, env.PagesBase, env.layout().DistSeg()), "OPEN")))
-		s.Discussions = []registry.DiscussionEntry{{Version: s.Version, Number: 1, NodeID: "D_1"}}
 		num++
 	}
 	if _, err := saveReg(env, reg); err != nil {
@@ -474,10 +474,10 @@ func TestRunProjectIdempotentNoChange(t *testing.T) {
 			continue
 		}
 		s.Issue = &registry.IssueRef{Number: num, NodeID: fmt.Sprintf("I_%d", num), URL: fmt.Sprintf("https://github.com/o/r/issues/%d", num)}
+		s.Discussions = []registry.DiscussionEntry{{Version: s.Version, Number: 1, NodeID: "D_1"}}
 		title := fmt.Sprintf("[%s] v%s", s.Name, s.Version)
 		body := projector.BuildIssueBody(s, env.PagesBase, env.layout().DistSeg())
 		rules = append(rules, getIssueRule(num, issueCombinedResp(t, num, title, body, "OPEN")))
-		s.Discussions = []registry.DiscussionEntry{{Version: s.Version, Number: 1, NodeID: "D_1"}}
 		num++
 	}
 	if _, err := saveReg(env, reg); err != nil {

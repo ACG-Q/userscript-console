@@ -248,8 +248,10 @@ func TestBuildIssueBodyDiscussionLinks(t *testing.T) {
 		}
 	}
 	// 无账本 → 帖子列全 —
-	s2 := &registry.Script{ID: "x", Name: "X", Version: "1.0.0", Type: registry.TypeSelf,
-		Changelog: []registry.ChangelogEntry{{Version: "1.0.0", Date: "2026-01-01", Note: "n"}}}
+	s2 := &registry.Script{
+		ID: "x", Name: "X", Version: "1.0.0", Type: registry.TypeSelf,
+		Changelog: []registry.ChangelogEntry{{Version: "1.0.0", Date: "2026-01-01", Note: "n"}},
+	}
 	if b := BuildIssueBody(s2, "", "dist"); !strings.Contains(b, "| v1.0.0 | 2026-01-01 | n | — |") {
 		t.Errorf("无账本应全 —:\n%s", b)
 	}
