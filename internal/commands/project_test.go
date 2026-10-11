@@ -426,7 +426,7 @@ func TestRunProjectRefreshReopenPublish(t *testing.T) {
 	rules = append(rules,
 		routeRule{qContains: "reopenIssue(input:", resp: `{"data":{"reopenIssue":{"issue":{"id":"I_5","number":5,"state":"OPEN"}}}}`},
 		routeRule{qContains: "updateIssue(input:", resp: `{"data":{"updateIssue":{"issue":{"id":"I_5","number":5,"state":"OPEN"}}}}`},
-		routeRule{qContains: "discussionCategories", resp: `{"data":{"repository":{"discussionCategories":{"nodes":[{"id":"DC_1","name":"Q&A","slug":"q-a","isDefault":true}]}}}}`},
+		routeRule{qContains: "discussionCategories", resp: `{"data":{"repository":{"discussionCategories":{"nodes":[{"id":"DC_1","name":"Q&A","slug":"q-a"}]}}}}`},
 		routeRule{qContains: "issue(number: $number)", varNumber: 1, resp: `{"data":{"repository":{"id":"R_1","nameWithOwner":"o/r","issue":null}}}`},
 		routeRule{qContains: "createDiscussion(input:", resp: `{"data":{"createDiscussion":{"discussion":{"id":"D_9","number":9,"title":"T","body":"B","url":"https://github.com/o/r/discussions/9","createdAt":"2026-10-10T00:00:00Z"}}}}`},
 	)

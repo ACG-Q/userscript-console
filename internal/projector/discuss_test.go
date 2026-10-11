@@ -9,8 +9,8 @@ import (
 )
 
 const categoriesResp = `{"data":{"repository":{"discussionCategories":{"nodes":[` +
-	`{"id":"DC_1","name":"Q&A","slug":"q-a","isDefault":true},` +
-	`{"id":"DC_2","name":"一般","slug":"general","isDefault":false}]}}}}`
+	`{"id":"DC_1","name":"Q&A","slug":"q-a"},` +
+	`{"id":"DC_2","name":"一般","slug":"general"}]}}}}`
 
 // repoIDResp 复用 reconcile_test.go 的定义（同包不重复声明）。
 
@@ -99,16 +99,16 @@ func TestPublishFailureNoLedgerAppend(t *testing.T) {
 	}
 }
 
-// TestSelectCategory 分类选择 q-a > isDefault > 列表第一个。
+// TestSelectCategory 分类选择 q-a > 列表第一个。
 func TestSelectCategory(t *testing.T) {
 	cases := []struct {
 		name string
 		cats []github.Category
 		want string
 	}{
-		{"q-a 优先", []github.Category{{NodeID: "X", Slug: "general", IsDefault: true}, {NodeID: "Q", Slug: "q-a"}}, "Q"},
-		{"isDefault 次之", []github.Category{{NodeID: "A", Slug: "a"}, {NodeID: "B", Slug: "b", IsDefault: true}}, "B"},
-		{"取第一个", []github.Category{{NodeID: "A", Slug: "a"}, {NodeID: "B", Slug: "b"}}, "A"},
+		{"q-a 优先", []github.Category{{NodeID: "X", Slug: "general"}, {NodeID: "Q", Slug: "q-a"}}, "Q"},
+		{"无 q-a 取第一个", []github.Category{{NodeID: "A", Slug: "a"}, {NodeID: "B", Slug: "b"}}, "A"},
+		{"仅一个分类", []github.Category{{NodeID: "Z", Slug: "z"}}, "Z"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

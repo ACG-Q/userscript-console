@@ -57,6 +57,8 @@
 
 ### 任务 1：GitHub 分类查询补 isDefault 字段
 
+> **勘误（2026-10-11）**：GitHub GraphQL `DiscussionCategory` 实际**无 `isDefault` 字段**（真实 API 核验 `undefinedField`），本任务实现后导致 `DiscussionCategories` 查询失败、发帖阶段报错。已在 v1.4.1 回退该字段（查询/结构体/`selectCategory` 退化为 q-a > 第一个）。以下内容仅作历史记录。
+
 **文件：**
 - 修改：`internal/github/queries.go:114-121`（DISCUSSION_CATEGORIES_QUERY）
 - 修改：`internal/github/helpers.go:32-36`（Category）、`:108-112`（gqlCategory）、`:358-361`（映射）

@@ -19,7 +19,7 @@
 | 问题 | 决策 |
 |---|---|
 | 空账本首次行为 | **立即回填**：空账本视为「末条 != 当前版本」，首次即发当前版本帖 |
-| Discussion 分类 | **Q&A 优先**：slug `q-a` → `isDefault` 标记 → 列表第一个 |
+| Discussion 分类 | **Q&A 优先**：slug `q-a` → 列表第一个（勘误：GitHub GraphQL `DiscussionCategory` 无 `isDefault` 字段，2026-10-11 真实 API 核验，v1.4.1 移除该级） |
 | workflow Commit 条件 | **修**：加 `|| steps.proj.outputs.changed == 'true'` |
 | 已有 Issue 刷新策略 | **判等刷新**（I-1 契约）：`GetIssue` 拉线上 → 本地生成 → 相等跳过，不等才 `UpdateIssue` |
 | 验收方式 | **真实触发**：发版后在 Issue #1 评论 `/project` 实跑验证 |
@@ -92,7 +92,7 @@ func publishDiscussions(ctx, env, r) (posted, skipped, errs int)
 
 发布流程（分类懒加载，整轮只查一次，缓存于局部变量）：
 
-1. 分类未缓存 → `DiscussionCategories(ctx)` → 选择规则：**slug == `q-a`（Q&A）→ `isDefault` 标记 → 列表第一个**；查询失败 → 判本脚本失败
+1. 分类未缓存 → `DiscussionCategories(ctx)` → 选择规则：**slug == `q-a`（Q&A）→ 列表第一个**；查询失败 → 判本脚本失败
 2. `CreateDiscussion(ctx, catID, issuepage.DiscussionTitle(s, s.Version), issuepage.DiscussionBody(s, s.Version))`
 3. 成功 → 追加账本（字段来自返回的 `Discussion`）
 

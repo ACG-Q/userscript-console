@@ -46,7 +46,7 @@ usm project --json     ← action.yml 模式
 
 - **Issue 回填**：无关联 Issue 的脚本走**全量列表**（含 CLOSED）按标题前缀匹配——命中已关闭项先重开再更新，未命中才创建；整个阶段只拉一次列表。
 - **判等刷新**：已关联 Issue 用 `GetIssue` 比对 title 与 body，全等则零写；有变更才重开（如需）+更新并 bump `updated_at`。
-- **版本帖发牌**：账本末条版本==当前版本 → 跳过（零 API）；否则发帖并追加账本条目，失败不记账可重试。分类选择 q-a（Q&A）> isDefault > 第一个。
+- **版本帖发牌**：账本末条版本==当前版本 → 跳过（零 API）；否则发帖并追加账本条目，失败不记账可重试。分类选择 q-a（Q&A）> 列表第一个。
 - **changed**：创建/更新/重开/发帖任一 >0 才为 true；全等且发牌均当前 → changed=false。
 - **前置**：`GH_REPO_OWNER` 与 `GH_CLIENT` 都缺失 → 失败「project 命令需要配置 GH_REPO_OWNER 或 GH_CLIENT」。
 - 未配置 GitHub API 时仅输出统计，回帖带「⚠️ GitHub API 未配置，仅输出统计」。

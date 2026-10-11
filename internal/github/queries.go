@@ -115,7 +115,7 @@ mutation($issueId: ID!) {
 query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     discussionCategories(first: 25) {
-      nodes { id name slug isDefault }
+      nodes { id name slug }
     }
   }
 }`

@@ -9,15 +9,11 @@ import (
 	"github.com/acg-q/userscript-console/internal/registry"
 )
 
-// selectCategory 版本帖分类选择：slug q-a（Q&A）> isDefault > 列表第一个。
+// selectCategory 版本帖分类选择：slug q-a（Q&A）优先，否则列表第一个。
+// 注：GitHub GraphQL DiscussionCategory 无 isDefault 字段（真实 schema 核验）。
 func selectCategory(cats []github.Category) string {
 	for _, c := range cats {
 		if c.Slug == "q-a" {
-			return c.NodeID
-		}
-	}
-	for _, c := range cats {
-		if c.IsDefault {
 			return c.NodeID
 		}
 	}
