@@ -94,6 +94,7 @@ type Thread struct {
 // Comment 一条版本帖评论（正文纯文本，渲染处统一转义）。
 type Comment struct {
 	Author    string
+	AvatarURL string
 	Body      string
 	CreatedAt string
 	Replies   []Comment
@@ -414,13 +415,14 @@ type installBtnData struct {
 }
 
 type cmtView struct {
-	Author  string
-	Time    string
-	Body    string
-	Quoted  bool
-	Avatar  string
-	Initial string
-	Replies []cmtView
+	Author    string
+	Time      string
+	Body      string
+	Quoted    bool
+	Avatar    string
+	AvatarURL string
+	Initial   string
+	Replies   []cmtView
 }
 
 type discPostView struct {
@@ -436,11 +438,12 @@ type discPostView struct {
 // discPayload* 是 #discData JSON 载荷（disc-js 消费；省略 is_owner/is_answer/
 // replies，JS falsy 安全）。json.Marshal 默认转义 <>&，防 </script> 注入。
 type discPayloadComment struct {
-	Author  string               `json:"author"`
-	Time    string               `json:"time"`
-	Body    string               `json:"body"`
-	Quoted  bool                 `json:"quoted,omitempty"`
-	Replies []discPayloadComment `json:"replies,omitempty"`
+	Author    string               `json:"author"`
+	Time      string               `json:"time"`
+	Body      string               `json:"body"`
+	Quoted    bool                 `json:"quoted,omitempty"`
+	AvatarURL string               `json:"avatar,omitempty"`
+	Replies   []discPayloadComment `json:"replies,omitempty"`
 }
 
 // countComments 顶层评论 + 全部回复数（badge 口径，spec §2）。
@@ -468,12 +471,13 @@ func newCmtView(c Comment, now time.Time) cmtView {
 		break
 	}
 	v := cmtView{
-		Author:  who,
-		Time:    times.RelativeTime(c.CreatedAt, now),
-		Body:    body,
-		Quoted:  quoted,
-		Avatar:  avatarClass(who),
-		Initial: initial,
+		Author:    who,
+		Time:      times.RelativeTime(c.CreatedAt, now),
+		Body:      body,
+		Quoted:    quoted,
+		Avatar:    avatarClass(who),
+		AvatarURL: c.AvatarURL,
+		Initial:   initial,
 	}
 	for _, r := range c.Replies {
 		v.Replies = append(v.Replies, newCmtView(r, now))
@@ -500,7 +504,7 @@ func avatarClass(name string) string {
 }
 
 func newPayloadComment(c cmtView) discPayloadComment {
-	p := discPayloadComment{Author: c.Author, Time: c.Time, Body: c.Body, Quoted: c.Quoted}
+	p := discPayloadComment{Author: c.Author, Time: c.Time, Body: c.Body, Quoted: c.Quoted, AvatarURL: c.AvatarURL}
 	for _, r := range c.Replies {
 		p.Replies = append(p.Replies, newPayloadComment(r))
 	}

@@ -212,7 +212,8 @@ main { padding: 8px 28px 36px; }
 .d-disc .disc-head { font-size: 14px; margin-bottom: 12px; }
 .cmt { display: grid; grid-template-columns: 32px 1fr; gap: 0 10px; padding: 12px 0; border-top: 1px solid var(--border); font-size: 14px; }
 .cmt:first-of-type { border-top: none; padding-top: 2px; }
-.cmt-av { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13.5px; font-weight: 700; color: #fff; user-select: none; }
+.cmt-av { position: relative; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13.5px; font-weight: 700; color: #fff; user-select: none; }
+.cmt-av-img { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .cmt-av.av0 { background: #0969da; }
 .cmt-av.av1 { background: #1a7f37; }
 .cmt-av.av2 { background: #8250df; }
@@ -233,6 +234,31 @@ main { padding: 8px 28px 36px; }
 .cmt-replies .cmt p { font-size: 13px; }
 .cmt-replies .cmt-replies { padding-left: 10px; }
 .cmt p.quoted { padding: 4px 10px; border-left: 3px solid var(--brand); background: var(--bg); border-radius: 0 6px 6px 0; color: var(--text-muted); }
+
+/* --- 用户卡片（悬停头像） --- */
+.ucard { position: fixed; z-index: 100; width: 300px; padding: 16px; border-radius: 12px; background: var(--bg); border: 1px solid var(--border); box-shadow: 0 12px 32px rgba(0, 0, 0, .16), 0 2px 8px rgba(0, 0, 0, .08); opacity: 0; transform: translateY(4px); transition: opacity .15s ease, transform .15s ease; pointer-events: none; }
+.ucard.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.uc-top { display: flex; gap: 12px; align-items: center; }
+.uc-ava { width: 56px; height: 56px; border-radius: 50%; border: 1px solid var(--border); flex: none; background: var(--bg-subtle); }
+.uc-id { min-width: 0; }
+.uc-name { font-size: 15px; font-weight: 700; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uc-login { font-size: 13px; color: var(--text-muted); }
+.uc-bio { margin: 10px 0 0; font-size: 13px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.uc-meta { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 12.5px; color: var(--text-muted); }
+.uc-meta a { color: var(--brand); }
+.uc-stats { display: flex; margin-top: 12px; padding: 10px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.uc-stat { flex: 1; text-align: center; }
+.uc-stat b { display: block; font-size: 15px; color: var(--brand); font-variant-numeric: tabular-nums; }
+.uc-stat span { font-size: 12px; color: var(--text-muted); }
+.uc-link { display: flex; align-items: center; justify-content: center; margin-top: 12px; padding: 7px 0; border-radius: 8px; background: var(--bg-subtle); border: 1px solid var(--border); color: var(--brand); font-size: 13px; font-weight: 600; text-decoration: none; min-height: 34px; }
+.uc-link:hover { background: var(--neutral-bg); }
+.uc-sk { background: linear-gradient(90deg, var(--bg-subtle) 25%, var(--neutral-bg) 50%, var(--bg-subtle) 75%); background-size: 200% 100%; animation: uc-shimmer 1.2s infinite linear; border-radius: 6px; }
+@keyframes uc-shimmer { to { background-position: -200% 0; } }
+.uc-sk-ava { width: 56px; height: 56px; border-radius: 50%; flex: none; }
+.uc-sk-l1 { height: 14px; width: 55%; margin-bottom: 8px; }
+.uc-sk-l2 { height: 12px; width: 35%; }
+.uc-sk-row { height: 36px; margin-top: 14px; }
+@media (prefers-reduced-motion: reduce) { .ucard { transition: none; } }
 .d-disc .btn { margin-top: 12px; }
 
 /* --- 版本帖切换（详情页评论区） --- */
@@ -660,14 +686,117 @@ document.querySelectorAll('.chip').forEach(function (btn) {
     return '<span class="badge plain" data-tip="讨论尚未标记为已解决">' + n + ' 条回复 · 待解决</span>';
   }
 
-  function avatarEl(name) {
+  // ── 用户卡片：悬停头像 → 实时拉取 api.github.com/users/<login> ──
+  var uc = document.getElementById('ucard');
+  if (!uc) {
+    uc = document.createElement('div');
+    uc.id = 'ucard';
+    uc.className = 'ucard';
+    uc.setAttribute('role', 'tooltip');
+    uc.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(uc);
+  }
+  var ucCache = {}, ucPending = {}, ucHideT = null, ucShowT = null, ucActive = null;
+  var UC_TTL = 30 * 60 * 1000;
+
+  function ucEsc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+  function ucNum(x) { return typeof x === 'number' ? x.toLocaleString('en-US') : '—'; }
+
+  function ucSkeleton() {
+    return '<div style="display:flex;gap:12px;align-items:center"><div class="uc-sk uc-sk-ava"></div><div style="flex:1"><div class="uc-sk uc-sk-l1"></div><div class="uc-sk uc-sk-l2"></div></div></div><div class="uc-sk uc-sk-row"></div>';
+  }
+
+  function ucBody(u) {
+    return '<div class="uc-top"><img class="uc-ava" src="' + ucEsc(u.avatar_url) + '" alt="" width="56" height="56">' +
+      '<div class="uc-id"><div class="uc-name">' + ucEsc(u.name || u.login) + '</div>' +
+      '<div class="uc-login">@' + ucEsc(u.login) + '</div></div></div>' +
+      (u.bio ? '<p class="uc-bio">' + ucEsc(u.bio) + '</p>' : '') +
+      (u.location || u.blog ? '<div class="uc-meta">' +
+        (u.location ? '<span>' + ucEsc(u.location) + '</span>' : '') +
+        (u.blog ? '<span><a href="' + (String(u.blog).indexOf('http') === 0 ? ucEsc(u.blog) : 'https://' + ucEsc(u.blog)) +
+        '" target="_blank" rel="noopener noreferrer">' + ucEsc(String(u.blog).replace(/^https?:\/\//, '')) + '</a></span>' : '') +
+      '</div>' : '') +
+      '<div class="uc-stats">' +
+      '<div class="uc-stat"><b>' + ucNum(u.public_repos) + '</b><span>仓库</span></div>' +
+      '<div class="uc-stat"><b>' + ucNum(u.followers) + '</b><span>关注者</span></div>' +
+      '<div class="uc-stat"><b>' + ucNum(u.following) + '</b><span>正在关注</span></div>' +
+      '</div>' +
+      '<a class="uc-link" href="' + ucEsc(u.html_url) + '" target="_blank" rel="noopener noreferrer">在 GitHub 查看主页 →</a>';
+  }
+
+  function ucPlace(el) {
+    var r = el.getBoundingClientRect();
+    uc.style.visibility = 'hidden';
+    uc.classList.add('show');
+    var ch = uc.offsetHeight, cw = uc.offsetWidth;
+    var top = r.bottom + 10;
+    if (top + ch > window.innerHeight - 8) top = r.top - ch - 10;
+    var left = Math.min(Math.max(8, r.left + r.width / 2 - cw / 2), window.innerWidth - cw - 8);
+    uc.style.top = Math.max(8, top) + 'px';
+    uc.style.left = left + 'px';
+    uc.style.visibility = '';
+  }
+
+  function ucHide() {
+    uc.classList.remove('show');
+    uc.setAttribute('aria-hidden', 'true');
+    ucActive = null;
+  }
+
+  function ucRender(el, login) {
+    ucActive = el;
+    var hit = null;
+    try {
+      var raw = sessionStorage.getItem('uc:' + login);
+      if (raw) {
+        var p = JSON.parse(raw);
+        if (p && Date.now() - p.t < UC_TTL) hit = p.d;
+      }
+    } catch (e) { /* sessionStorage 不可用则跳过缓存 */ }
+    if (hit) { uc.innerHTML = ucBody(hit); uc.setAttribute('aria-hidden', 'false'); ucPlace(el); return; }
+    uc.innerHTML = ucSkeleton();
+    uc.setAttribute('aria-hidden', 'false');
+    ucPlace(el);
+    if (ucPending[login]) return;
+    ucPending[login] = true;
+    fetch('https://api.github.com/users/' + encodeURIComponent(login))
+      .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+      .then(function (u) {
+        ucCache[login] = u;
+        try { sessionStorage.setItem('uc:' + login, JSON.stringify({ t: Date.now(), d: u })); } catch (e) { /* 忽略 */ }
+        if (ucActive === el) { uc.innerHTML = ucBody(u); ucPlace(el); }
+      })
+      .catch(function () { if (ucActive === el) ucHide(); }) // 限流/失败静默降级
+      .then(function () { delete ucPending[login]; });
+  }
+
+  function ucShow(el) { clearTimeout(ucHideT); ucRender(el, el.dataset.login); }
+  function ucScheduleHide() { clearTimeout(ucHideT); ucHideT = setTimeout(ucHide, 180); }
+
+  uc.addEventListener('mouseenter', function () { clearTimeout(ucHideT); });
+  uc.addEventListener('mouseleave', ucScheduleHide);
+  window.addEventListener('scroll', function () { if (ucActive) ucPlace(ucActive); }, { passive: true });
+
+  function avatarEl(name, url) {
     var s = document.createElement('span');
     s.className = 'cmt-av';
     var sum = 0;
     for (var i = 0; i < name.length; i++) sum += name.charCodeAt(i);
     s.classList.add('av' + (sum % 5));
+    s.dataset.login = name;
     s.textContent = name.trim().charAt(0) || '?';
     s.setAttribute('aria-hidden', 'true');
+    if (url) {
+      var img = document.createElement('img');
+      img.className = 'cmt-av-img';
+      img.src = url;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.onerror = function () { img.remove(); };
+      s.appendChild(img);
+    }
+    s.addEventListener('mouseenter', function () { clearTimeout(ucShowT); ucShowT = setTimeout(function () { ucShow(s); }, 200); });
+    s.addEventListener('mouseleave', function () { clearTimeout(ucShowT); ucScheduleHide(); });
     return s;
   }
 
@@ -675,7 +804,7 @@ document.querySelectorAll('.chip').forEach(function (btn) {
     var name = c.author || '未知用户';
     var el = document.createElement('div');
     el.className = 'cmt' + (c.is_owner ? ' owner' : '');
-    el.appendChild(avatarEl(name));
+    el.appendChild(avatarEl(name, c.avatar));
     var main = document.createElement('div');
     main.className = 'cmt-main';
     var head = document.createElement('div');
@@ -848,7 +977,7 @@ document.querySelectorAll('.chip').forEach(function (btn) {
 {{define "status-badge"}}{{if .Enabled}}<span class="status" data-tip="脚本已启用，安装链接可用"><span class="dot" aria-hidden="true"></span>启用</span>{{else}}<span class="status off" data-tip="脚本已禁用，暂不可安装"><span class="dot" aria-hidden="true"></span>已禁用</span>{{end}}{{end}}
 {{define "issue-badges"}}{{if .Answered}}<span class="badge" data-tip="讨论已被标记为已解决">{{template "icon-check"}}已解决</span><span class="badge plain" data-tip="讨论回复总数">{{.ReplyCount}} 条回复</span>{{else if eq .ReplyCount 0}}<span class="badge plain" data-tip="该讨论还没有回复">0 条回复</span>{{else}}<span class="badge plain" data-tip="讨论尚未标记为已解决">{{.ReplyCount}} 条回复 · 待解决</span>{{end}}{{end}}
 {{define "post-badges"}}{{if .Answered}}<span class="badge" data-tip="该版本帖已被标记为已解决">{{template "icon-check"}}已解决</span><span class="badge plain" data-tip="讨论回复总数">{{.ReplyCount}} 条回复</span>{{else if eq .ReplyCount 0}}<span class="badge plain" data-tip="该版本帖还没有评论">0 条回复</span>{{else}}<span class="badge plain" data-tip="讨论尚未标记为已解决">{{.ReplyCount}} 条回复 · 待解决</span>{{end}}{{end}}
-{{define "cmt"}}<div class="cmt"><span class="cmt-av {{.Avatar}}" aria-hidden="true">{{.Initial}}</span><div class="cmt-main"><div class="cmt-head"><b>{{.Author}}</b><time>{{.Time}}</time></div><p{{if .Quoted}} class="quoted"{{end}}>{{.Body}}</p>{{if .Replies}}<div class="cmt-replies">{{range .Replies}}{{template "cmt" .}}{{end}}</div>{{end}}</div></div>{{end}}
+{{define "cmt"}}<div class="cmt"><span class="cmt-av {{.Avatar}}" data-login="{{.Author}}" aria-hidden="true">{{.Initial}}{{if .AvatarURL}}<img class="cmt-av-img" src="{{.AvatarURL}}" alt="" loading="lazy" onerror="this.remove()">{{end}}</span><div class="cmt-main"><div class="cmt-head"><b>{{.Author}}</b><time>{{.Time}}</time></div><p{{if .Quoted}} class="quoted"{{end}}>{{.Body}}</p>{{if .Replies}}<div class="cmt-replies">{{range .Replies}}{{template "cmt" .}}{{end}}</div>{{end}}</div></div>{{end}}
 {{define "script-card"}}<article class="script-card" data-type="{{.Type}}">
 <div class="sc-main">
 <div class="sc-title"><h3>{{.Name}}</h3>{{template "type-pill" .}}{{template "version-pill" .}}{{template "status-badge" .}}</div>

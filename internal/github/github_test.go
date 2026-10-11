@@ -622,9 +622,9 @@ func TestDiscussion系列(t *testing.T) {
 			"comments": map[string]any{
 				"pageInfo": map[string]any{"hasNextPage": false, "endCursor": ""},
 				"nodes": []any{map[string]any{
-					"id": "DCM_1", "author": map[string]any{"login": "u1"}, "body": "顶层", "createdAt": "c1",
+					"id": "DCM_1", "author": map[string]any{"login": "u1", "avatarUrl": "https://av.example/u1.png"}, "body": "顶层", "createdAt": "c1",
 					"replies": map[string]any{"nodes": []any{
-						map[string]any{"id": "DR_1", "author": map[string]any{"login": "u2"}, "body": "回复1", "createdAt": "c2"},
+						map[string]any{"id": "DR_1", "author": map[string]any{"login": "u2", "avatarUrl": "https://av.example/u2.png"}, "body": "回复1", "createdAt": "c2"},
 						map[string]any{"id": "DR_2", "body": "回复2-无作者", "createdAt": "c3"},
 					}},
 				}},
@@ -639,7 +639,10 @@ func TestDiscussion系列(t *testing.T) {
 		if len(rs) != 2 || rs[0].NodeID != "DR_1" || rs[0].Author != "u2" || rs[0].Body != "回复1" {
 			t.Errorf("回复解析错误: %+v", rs)
 		}
-		if rs[1].Author != "" || rs[1].Body != "回复2-无作者" {
+		if th.Comments[0].AvatarURL != "https://av.example/u1.png" || rs[0].AvatarURL != "https://av.example/u2.png" {
+			t.Errorf("author.avatarUrl 应透传: %+v", rs)
+		}
+		if rs[1].Author != "" || rs[1].AvatarURL != "" || rs[1].Body != "回复2-无作者" {
 			t.Errorf("无作者回复应留空: %+v", rs[1])
 		}
 	})

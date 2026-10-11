@@ -1099,7 +1099,7 @@ func TestDetailAvatar(t *testing.T) {
 	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
 	out, err := Build(reg, Options{Out: outDir, Now: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)}, Data{Discussions: map[string]Thread{
 		"D_a": {Comments: []Comment{
-			{Author: "ACG-Q", Body: "首字 A", CreatedAt: "2026-10-01T00:00:00Z"},
+			{Author: "ACG-Q", Body: "首字 A", CreatedAt: "2026-10-01T00:00:00Z", AvatarURL: "https://av.example/q.png"},
 			{Author: "张三", Body: "中文首字", CreatedAt: "2026-10-02T00:00:00Z"},
 		}},
 	}})
@@ -1107,11 +1107,30 @@ func TestDetailAvatar(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := out.DetailHTMLs["a01"]
-	if !strings.Contains(html, `<span class="cmt-av av4" aria-hidden="true">A</span>`) {
-		t.Errorf("ACG-Q 应渲染 av4 头像与首字符 A（65+67+71+45+81=329 %% 5=4）:\n%s", html)
+	if !strings.Contains(html, `<span class="cmt-av av4" data-login="ACG-Q" aria-hidden="true">A`) {
+		t.Errorf("ACG-Q 应渲染 av4 头像容器与首字符 A（回退层）:\n%s", html)
 	}
 	if !strings.Contains(html, `aria-hidden="true">张</span>`) {
 		t.Errorf("中文作者应取首 rune 作头像字:\n%s", html)
+	}
+	if !strings.Contains(html, `<img class="cmt-av-img" src="https://av.example/q.png"`) || !strings.Contains(html, `onerror="this.remove()"`) {
+		t.Errorf("有 avatarUrl 应叠加真实头像 img（自毁回退）:\n%s", html)
+	}
+	if got := strings.Count(html, `<img class="cmt-av-img"`); got != 1 {
+		t.Errorf("仅 avatarUrl 非空的评论渲染 img，got %d 处", got)
+	}
+	start := strings.Index(html, `id="discData">`) + len(`id="discData">`)
+	end := strings.Index(html[start:], "</script>")
+	var payload []discPayloadPost
+	if err := json.Unmarshal([]byte(html[start:start+end]), &payload); err != nil {
+		t.Fatalf("discData 非法 JSON: %v", err)
+	}
+	cs := payload[0].Comments
+	if cs[0].AvatarURL != "https://av.example/q.png" || cs[1].AvatarURL != "" {
+		t.Errorf("payload avatar 应透传且 omitempty: %+v", cs)
+	}
+	if !strings.Contains(html, "api.github.com/users/") || !strings.Contains(html, "ucard") {
+		t.Errorf("详情页应注入用户卡片 JS 与容器样式")
 	}
 }
 

@@ -145,7 +145,7 @@ query($id: ID!, $cursor: String) {
       answer { id }
       comments(first: 100, after: $cursor) {
         pageInfo { hasNextPage endCursor }
-        nodes { id author { login } body createdAt replies(first: 100) { nodes { id author { login } body createdAt } } }
+        nodes { id author { login avatarUrl } body createdAt replies(first: 100) { nodes { id author { login avatarUrl } body createdAt } } }
       }
     }
   }
@@ -158,7 +158,7 @@ query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
     issue(number: $number) {
       comments(first: 100, after: $cursor) {
         pageInfo { hasNextPage endCursor }
-        nodes { id author { login } body createdAt }
+        nodes { id author { login avatarUrl } body createdAt }
       }
     }
   }

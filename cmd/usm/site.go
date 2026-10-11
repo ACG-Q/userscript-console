@@ -78,6 +78,7 @@ func mapComments(cs []github.Comment) []pages.Comment {
 	for _, c := range cs {
 		out = append(out, pages.Comment{
 			Author:    c.Author,
+			AvatarURL: c.AvatarURL,
 			Body:      c.Body,
 			CreatedAt: c.CreatedAt,
 			Replies:   mapComments(c.Replies),

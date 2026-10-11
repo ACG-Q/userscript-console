@@ -25,6 +25,7 @@ type Issue struct {
 type Comment struct {
 	NodeID    string
 	Author    string
+	AvatarURL string
 	Body      string
 	CreatedAt string
 	Replies   []Comment
@@ -84,7 +85,8 @@ func (g gqlIssue) toIssue() (Issue, error) {
 type gqlComment struct {
 	ID     string `json:"id"`
 	Author *struct {
-		Login string `json:"login"`
+		Login     string `json:"login"`
+		AvatarURL string `json:"avatarUrl"`
 	} `json:"author"`
 	Body      string `json:"body"`
 	CreatedAt string `json:"createdAt"`
@@ -100,6 +102,7 @@ func (g gqlComment) toComment() (Comment, error) {
 	c := Comment{NodeID: g.ID, Body: g.Body, CreatedAt: g.CreatedAt}
 	if g.Author != nil {
 		c.Author = g.Author.Login
+		c.AvatarURL = g.Author.AvatarURL
 	}
 	if g.Replies != nil {
 		for _, r := range g.Replies.Nodes {
