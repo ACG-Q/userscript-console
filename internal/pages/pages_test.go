@@ -1004,8 +1004,10 @@ func TestDetailReplies(t *testing.T) {
 	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
 	out, err := Build(reg, Options{Out: outDir, Now: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)}, Data{Discussions: map[string]Thread{
 		"D_1": {Comments: []Comment{
-			{Author: "u1", Body: "顶层", CreatedAt: "2026-10-01T00:00:00Z",
-				Replies: []Comment{{Author: "u2", Body: "回复内容", CreatedAt: "2026-10-02T00:00:00Z"}}},
+			{
+				Author: "u1", Body: "顶层", CreatedAt: "2026-10-01T00:00:00Z",
+				Replies: []Comment{{Author: "u2", Body: "回复内容", CreatedAt: "2026-10-02T00:00:00Z"}},
+			},
 			{Author: "u3", Body: "另一条", CreatedAt: "2026-10-03T00:00:00Z"},
 		}},
 	}})
