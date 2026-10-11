@@ -27,9 +27,9 @@ func publishScript(id, version string, ledger []registry.DiscussionEntry) regist
 	}
 }
 
-// TestPublishEmptyLedgerPosts 空账本 → 分类+repoID+创建，追加账本 posted=1。
+// TestPublishEmptyLedgerPosts 空账本 → 分类+repoID+创建+回写，追加账本 posted=1。
 func TestPublishEmptyLedgerPosts(t *testing.T) {
-	d := &multiRespDoer{t: t, resps: []string{categoriesResp, repoIDResp, createDiscResp}}
+	d := &multiRespDoer{t: t, resps: []string{categoriesResp, repoIDResp, createDiscResp, `{"data":{}}`}}
 	env := &Env{Root: "/tmp", RepoOwner: "o", RepoName: "o/r", GHClient: newTestGHClient(t, d)}
 	r := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{
 		publishScript("a", "1.0.0", nil),
@@ -58,9 +58,9 @@ func TestPublishSkipsWhenCurrent(t *testing.T) {
 	}
 }
 
-// TestPublishPostsWhenStale 末条旧于当前 → 发帖+追加。
+// TestPublishPostsWhenStale 末条旧于当前 → 发帖+回写+追加。
 func TestPublishPostsWhenStale(t *testing.T) {
-	d := &multiRespDoer{t: t, resps: []string{categoriesResp, repoIDResp, createDiscResp}}
+	d := &multiRespDoer{t: t, resps: []string{categoriesResp, repoIDResp, createDiscResp, `{"data":{}}`}}
 	env := &Env{Root: "/tmp", RepoOwner: "o", RepoName: "o/r", GHClient: newTestGHClient(t, d)}
 	r := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{
 		publishScript("a", "1.0.0", []registry.DiscussionEntry{{Version: "0.9.0", Number: 3, NodeID: "D_3"}}),
@@ -80,7 +80,8 @@ func TestPublishFailureNoLedgerAppend(t *testing.T) {
 	d := &multiRespDoer{t: t, resps: []string{
 		categoriesResp, repoIDResp,
 		`{"errors":[{"message":"server error"}]}`, // 脚本 a 发帖失败
-		createDiscResp, // 脚本 b 发帖成功（repoID 已缓存）
+		createDiscResp,                             // 脚本 b 发帖成功（repoID 已缓存）
+		`{"data":{}}`,                               // 脚本 b 回写
 	}}
 	env := &Env{Root: "/tmp", RepoOwner: "o", RepoName: "o/r", GHClient: newTestGHClient(t, d)}
 	r := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{
@@ -96,6 +97,47 @@ func TestPublishFailureNoLedgerAppend(t *testing.T) {
 	}
 	if len(r.Scripts[1].Discussions) != 1 {
 		t.Errorf("成功脚本应记录发牌: %+v", r.Scripts[1].Discussions)
+	}
+}
+
+// TestPublishWritesBackIssue 发帖成功 → 用新账本 body 回写 Issue（spec §3）。
+func TestPublishWritesBackIssue(t *testing.T) {
+	d := &multiRespDoer{t: t, resps: []string{
+		categoriesResp, repoIDResp, createDiscResp,
+		`{"data":{}}`, // updateIssue 回写
+	}}
+	env := &Env{Root: "/tmp", RepoOwner: "o", RepoName: "o/r", GHClient: newTestGHClient(t, d)}
+	r := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{
+		publishScript("a", "1.0.0", nil),
+	}}
+	posted, _, errs := publishDiscussions(context.Background(), env, r)
+	if posted != 1 || errs != 0 {
+		t.Fatalf("posted=%d errs=%d", posted, errs)
+	}
+	if d.calls != 4 {
+		t.Errorf("应 4 次调用（分类/repoID/发帖/回写）: calls=%d", d.calls)
+	}
+}
+
+// TestPublishWritebackFailureNotCounted 回写失败不计错、不阻塞（spec §3）。
+func TestPublishWritebackFailureNotCounted(t *testing.T) {
+	d := &multiRespDoer{t: t, resps: []string{
+		categoriesResp, repoIDResp, createDiscResp,
+		`{"errors":[{"message":"server error"}]}`, // 回写失败
+		createDiscResp,                             // 脚本 b 发帖成功（repoID 已缓存）
+		`{"data":{}}`,                               // 脚本 b 回写
+	}}
+	env := &Env{Root: "/tmp", RepoOwner: "o", RepoName: "o/r", GHClient: newTestGHClient(t, d)}
+	r := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{
+		publishScript("a", "1.0.0", nil),
+		publishScript("b", "2.0.0", nil),
+	}}
+	posted, _, errs := publishDiscussions(context.Background(), env, r)
+	if posted != 2 || errs != 0 {
+		t.Errorf("posted=%d errs=%d, want 2/0（回写失败不计错）", posted, errs)
+	}
+	if len(r.Scripts[0].Discussions) != 1 {
+		t.Errorf("发牌与回写解耦，账本照常: %+v", r.Scripts[0].Discussions)
 	}
 }
 
@@ -158,6 +200,7 @@ func TestProjectStageOrder(t *testing.T) {
 	d := &multiRespDoer{t: t, resps: []string{
 		`{"errors":[{"message":"boom"}]}`,          // 阶段一 GetIssue 失败
 		categoriesResp, repoIDResp, createDiscResp, // 阶段二成功
+		`{"data":{}}`, // 发帖后回写
 	}}
 	env := &Env{Root: "/tmp", RepoOwner: "o", RepoName: "o/r", GHClient: newTestGHClient(t, d)}
 	s := publishScript("a", "1.0.0", nil)

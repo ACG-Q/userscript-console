@@ -75,6 +75,20 @@ func publishDiscussions(ctx context.Context, env *Env, r *registry.Registry) (po
 			continue
 		}
 		posted++
+		writeBackIssue(ctx, env, s)
 	}
 	return posted, skipped, errs
+}
+
+// writeBackIssue 发帖成功后立即把新账本 body 回写面板 Issue。
+// 失败不计错：发帖与账本已落盘，下轮判等刷新自愈（spec §3）。
+func writeBackIssue(ctx context.Context, env *Env, s *registry.Script) {
+	if s.Issue == nil {
+		return
+	}
+	title := fmt.Sprintf("[%s] v%s", s.Name, s.Version)
+	body := BuildIssueBody(s, env.PagesBase, env.distSeg())
+	if err := env.GHClient.UpdateIssue(ctx, s.Issue.NodeID, title, body); err != nil {
+		return
+	}
 }
