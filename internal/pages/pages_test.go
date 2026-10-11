@@ -991,6 +991,52 @@ func TestDetailDiscJSONPayload(t *testing.T) {
 	}
 }
 
+// TestDetailReplies 嵌套回复进 SSR 与 payload；ReplyCount 含回复（spec §2）。
+func TestDetailReplies(t *testing.T) {
+	reg := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{{
+		ID: "r01", Type: registry.TypeSelf, Name: "回复", Version: "1.0.0", Enabled: true,
+		Match: []string{"*://*/*"},
+		Discussions: []registry.DiscussionEntry{
+			{Version: "1.0.0", Number: 1, NodeID: "D_1", URL: "https://github.com/o/r/discussions/1", CreatedAt: "2026-10-01"},
+		},
+	}}}
+	outDir := isolatedOut(t)
+	writeCommandsArchive(t, outDir, `{"schema":1,"commands":[]}`)
+	out, err := Build(reg, Options{Out: outDir, Now: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)}, Data{Discussions: map[string]Thread{
+		"D_1": {Comments: []Comment{
+			{Author: "u1", Body: "顶层", CreatedAt: "2026-10-01T00:00:00Z",
+				Replies: []Comment{{Author: "u2", Body: "回复内容", CreatedAt: "2026-10-02T00:00:00Z"}}},
+			{Author: "u3", Body: "另一条", CreatedAt: "2026-10-03T00:00:00Z"},
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := out.DetailHTMLs["r01"]
+	if !strings.Contains(html, "cmt-replies") || !strings.Contains(html, "回复内容") {
+		t.Errorf("SSR 应含嵌套回复结构:\n%s", html)
+	}
+	if !strings.Contains(html, "3 条回复") {
+		t.Errorf("ReplyCount 应为 3（2 顶层 + 1 回复）:\n%s", html)
+	}
+	start := strings.Index(html, `id="discData">`) + len(`id="discData">`)
+	end := strings.Index(html[start:], "</script>")
+	var payload []discPayloadPost
+	if err := json.Unmarshal([]byte(html[start:start+end]), &payload); err != nil {
+		t.Fatalf("discData 非法 JSON: %v", err)
+	}
+	if payload[0].ReplyCount != 3 {
+		t.Errorf("payload reply_count 应为 3: %+v", payload[0])
+	}
+	cs := payload[0].Comments
+	if len(cs) != 2 || len(cs[0].Replies) != 1 || cs[0].Replies[0].Body != "回复内容" {
+		t.Errorf("payload 应带嵌套 replies: %+v", cs)
+	}
+	if len(cs[1].Replies) != 0 {
+		t.Errorf("无回复评论 replies 应 omitempty 为空: %+v", cs[1])
+	}
+}
+
 // TestDetailFallbackPanel 详情页无帖时的回退面板（设计 §2 详情 fallback）。
 func TestDetailFallbackPanel(t *testing.T) {
 	outDir := isolatedOut(t)

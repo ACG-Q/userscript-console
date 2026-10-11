@@ -96,6 +96,7 @@ type Comment struct {
 	Author    string
 	Body      string
 	CreatedAt string
+	Replies   []Comment
 }
 
 // Outcome 是 Build 的返回值。
@@ -413,9 +414,10 @@ type installBtnData struct {
 }
 
 type cmtView struct {
-	Author string
-	Time   string
-	Body   string
+	Author  string
+	Time    string
+	Body    string
+	Replies []cmtView
 }
 
 type discPostView struct {
@@ -431,9 +433,43 @@ type discPostView struct {
 // discPayload* 是 #discData JSON 载荷（disc-js 消费；省略 is_owner/is_answer/
 // replies，JS falsy 安全）。json.Marshal 默认转义 <>&，防 </script> 注入。
 type discPayloadComment struct {
-	Author string `json:"author"`
-	Time   string `json:"time"`
-	Body   string `json:"body"`
+	Author  string               `json:"author"`
+	Time    string               `json:"time"`
+	Body    string               `json:"body"`
+	Replies []discPayloadComment `json:"replies,omitempty"`
+}
+
+// countComments 顶层评论 + 全部回复数（badge 口径，spec §2）。
+func countComments(cs []Comment) int {
+	n := len(cs)
+	for _, c := range cs {
+		n += len(c.Replies)
+	}
+	return n
+}
+
+func newCmtView(c Comment, now time.Time) cmtView {
+	who := c.Author
+	if who == "" {
+		who = "未知用户"
+	}
+	v := cmtView{
+		Author: who,
+		Time:   times.RelativeTime(c.CreatedAt, now),
+		Body:   times.Clip(c.Body, 400),
+	}
+	for _, r := range c.Replies {
+		v.Replies = append(v.Replies, newCmtView(r, now))
+	}
+	return v
+}
+
+func newPayloadComment(c cmtView) discPayloadComment {
+	p := discPayloadComment{Author: c.Author, Time: c.Time, Body: c.Body}
+	for _, r := range c.Replies {
+		p.Replies = append(p.Replies, newPayloadComment(r))
+	}
+	return p
 }
 
 type discPayloadPost struct {
@@ -640,7 +676,7 @@ func (r *renderer) buildCard(s registry.Script, opts Options, data Data) cardDat
 
 	c.Kind = 2
 	for _, th := range ths {
-		c.ReplyCount += len(th.Comments)
+		c.ReplyCount += countComments(th.Comments)
 		if th.HasAnswer {
 			c.Answered = true
 		}
@@ -793,18 +829,10 @@ func (r *renderer) renderDetail(s registry.Script, opts Options, data Data) (str
 			Number:     dsc.Number,
 			URL:        safeURL(dsc.URL),
 			Answered:   th.HasAnswer,
-			ReplyCount: len(th.Comments),
+			ReplyCount: countComments(th.Comments),
 		}
 		for _, c := range th.Comments {
-			who := c.Author
-			if who == "" {
-				who = "未知用户"
-			}
-			p.Comments = append(p.Comments, cmtView{
-				Author: who,
-				Time:   times.RelativeTime(c.CreatedAt, opts.Now),
-				Body:   times.Clip(c.Body, 400),
-			})
+			p.Comments = append(p.Comments, newCmtView(c, opts.Now))
 		}
 		d.Posts = append(d.Posts, p)
 	}
@@ -822,7 +850,7 @@ func (r *renderer) renderDetail(s registry.Script, opts Options, data Data) (str
 				Comments:   make([]discPayloadComment, 0, len(p.Comments)),
 			}
 			for _, c := range p.Comments {
-				dp.Comments = append(dp.Comments, discPayloadComment(c))
+				dp.Comments = append(dp.Comments, newPayloadComment(c))
 			}
 			payload = append(payload, dp)
 		}
