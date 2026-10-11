@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>用户卡片 Demo · 评论头像悬停</title>
+<style>
+  :root {
+    --brand: #0969da; --brand-hover: #0860ca; --bg: #ffffff; --bg-subtle: #f6f8fa;
+    --text: #1f2328; --text-muted: #57606a; --border: #d8dee4; --border-strong: #d0d7de;
+    --neutral-bg: #eaeef2; --radius: 12px;
+    --shadow-card: 0 12px 32px rgba(0,0,0,.16), 0 2px 8px rgba(0,0,0,.08);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 40px 16px; background: var(--bg-subtle); color: var(--text);
+         font: 14px/1.6 -apple-system, "Segoe UI", "Noto Sans SC", sans-serif; }
+  .frame { max-width: 720px; margin: 0 auto; background: var(--bg); border: 1px solid var(--border);
+           border-radius: var(--radius); padding: 24px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .hint { font-size: 13px; color: var(--text-muted); margin: 0 0 20px; }
+  .d-disc { border-radius: 12px; padding: 16px; background: var(--bg-subtle); border: 1px solid var(--border); }
+
+  /* ---- 评论结构（与线上一致） ---- */
+  .cmt { display: grid; grid-template-columns: 32px 1fr; gap: 0 10px; padding: 12px 0; border-top: 1px solid var(--border); }
+  .cmt:first-of-type { border-top: none; padding-top: 2px; }
+  .cmt-av { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-size: 13.5px; font-weight: 700; color: #fff; cursor: pointer; }
+  .cmt-av.av4 { background: #bc4c00; } .cmt-av.av2 { background: #8250df; }
+  .cmt-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+  .cmt-head b { font-size: 13.5px; }
+  .cmt time { font-size: 12px; color: var(--text-muted); }
+  .cmt p { margin: 2px 0 0; }
+  .cmt-replies { margin: 8px 0 0; padding-left: 12px; border-left: 2px solid var(--border); }
+  .cmt-replies .cmt { grid-template-columns: 24px 1fr; padding: 8px 0; border-top: none; }
+  .cmt-replies .cmt + .cmt { border-top: 1px solid var(--border); }
+  .cmt-replies .cmt-av { width: 24px; height: 24px; font-size: 11.5px; }
+
+  /* ---- 用户卡片 ---- */
+  .ucard { position: fixed; z-index: 100; width: 300px; padding: 16px; border-radius: 12px;
+           background: var(--bg); border: 1px solid var(--border); box-shadow: var(--shadow-card);
+           opacity: 0; transform: translateY(4px); transition: opacity .15s ease, transform .15s ease;
+           pointer-events: none; }
+  .ucard.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .uc-top { display: flex; gap: 12px; align-items: center; }
+  .uc-ava { width: 56px; height: 56px; border-radius: 50%; border: 1px solid var(--border); flex: none; background: var(--bg-subtle); }
+  .uc-id { min-width: 0; }
+  .uc-name { font-size: 15px; font-weight: 700; line-height: 1.3; }
+  .uc-login { font-size: 13px; color: var(--text-muted); }
+  .uc-bio { margin: 10px 0 0; font-size: 13px; color: var(--text); line-height: 1.5;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .uc-meta { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 12.5px; color: var(--text-muted); }
+  .uc-meta b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .uc-stats { display: flex; margin-top: 12px; padding: 10px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .uc-stat { flex: 1; text-align: center; }
+  .uc-stat b { display: block; font-size: 15px; color: var(--brand); font-variant-numeric: tabular-nums; }
+  .uc-stat span { font-size: 12px; color: var(--text-muted); }
+  .uc-link { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 12px;
+             padding: 7px 0; border-radius: 8px; background: var(--bg-subtle); border: 1px solid var(--border);
+             color: var(--brand); font-size: 13px; font-weight: 600; text-decoration: none; min-height: 34px; }
+  .uc-link:hover { background: var(--neutral-bg); }
+  /* 骨架屏 */
+  .uc-skel { display: flex; gap: 12px; align-items: center; }
+  .uc-skel .sk-ava { width: 56px; height: 56px; border-radius: 50%; }
+  .uc-skel .sk-lines { flex: 1; }
+  .sk { background: linear-gradient(90deg, var(--bg-subtle) 25%, var(--neutral-bg) 50%, var(--bg-subtle) 75%);
+        background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: 6px; }
+  .sk-ava { composes: sk; }
+  .sk-l1 { height: 14px; width: 55%; margin-bottom: 8px; }
+  .sk-l2 { height: 12px; width: 35%; }
+  .sk-row { height: 36px; margin-top: 14px; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  .sk-ava, .sk { animation: shimmer 1.2s infinite linear; }
+  /* 错误态 */
+  .uc-err { font-size: 13px; color: var(--text-muted); text-align: center; padding: 8px 0 2px; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <h1>评论区 · 用户卡片 Demo</h1>
+  <p class="hint">悬停（或触摸）评论头像 → 实时拉取 GitHub 用户数据显示卡片。数据来自 api.github.com/users/&lt;login&gt;，按 login 缓存。</p>
+
+  <section class="d-disc">
+    <div class="cmt">
+      <span class="cmt-av av4 uc-trigger" data-login="ACG-Q">A</span>
+      <div class="cmt-main">
+        <div class="cmt-head"><b>ACG-Q</b><time>1 小时前</time></div>
+        <p>测试</p>
+        <div class="cmt-replies">
+          <div class="cmt">
+            <span class="cmt-av av2 uc-trigger" data-login="torvalds">T</span>
+            <div class="cmt-main">
+              <div class="cmt-head"><b>torvalds</b><time>1 小时前</time></div>
+              <p>测试2（悬停这个头像试试外部用户）</p>
+            </div>
+          </div>
+          <div class="cmt">
+            <span class="cmt-av av4 uc-trigger" data-login="ACG-Q">A</span>
+            <div class="cmt-main">
+              <div class="cmt-head"><b>ACG-Q</b><time>1 小时前</time></div>
+              <p>再悬停一次同一用户 → 走缓存，不再请求</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cmt">
+      <span class="cmt-av av2 uc-trigger" data-login="github">G</span>
+      <div class="cmt-main">
+        <div class="cmt-head"><b>github</b><time>30 分钟前</time></div>
+        <p>悬停这个头像验证加载骨架屏与错误态（不存在的用户名会显示错误提示）。</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="ucard" id="ucard" role="tooltip" aria-hidden="true"></div>
+
+<script>
+(function () {
+  var card = document.getElementById('ucard');
+  var cache = Object.create(null);
+  var pending = Object.create(null);
+  var hideTimer = null, showTimer = null, activeEl = null;
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+  function n(x) { return typeof x === 'number' ? x.toLocaleString('en-US') : '—'; }
+
+  function skeleton() {
+    return '<div class="uc-skel"><div class="sk sk-ava"></div><div class="sk-lines">' +
+      '<div class="sk sk-l1"></div><div class="sk sk-l2"></div></div></div><div class="sk sk-row"></div>';
+  }
+
+  function body(u) {
+    return '<div class="uc-top"><img class="uc-ava" src="' + esc(u.avatar_url) + '" alt="" width="56" height="56">' +
+      '<div class="uc-id"><div class="uc-name">' + esc(u.name || u.login) + '</div>' +
+      '<div class="uc-login">@' + esc(u.login) + '</div></div></div>' +
+      (u.bio ? '<p class="uc-bio">' + esc(u.bio) + '</p>' : '') +
+      (u.location || u.blog ? '<div class="uc-meta">' +
+        (u.location ? '<span>📍 ' + esc(u.location) + '</span>' : '') +
+        (u.blog ? '<span>🔗 <a href="' + (u.blog.indexOf('http') === 0 ? esc(u.blog) : 'https://' + esc(u.blog)) +
+        '" target="_blank" rel="noopener">' + esc(u.blog.replace(/^https?:\/\//, '')) + '</a></span>' : '') +
+      '</div>' : '') +
+      '<div class="uc-stats">' +
+      '<div class="uc-stat"><b>' + n(u.public_repos) + '</b><span>仓库</span></div>' +
+      '<div class="uc-stat"><b>' + n(u.followers) + '</b><span>关注者</span></div>' +
+      '<div class="uc-stat"><b>' + n(u.following) + '</b><span>正在关注</span></div>' +
+      '</div>' +
+      '<a class="uc-link" href="' + esc(u.html_url) + '" target="_blank" rel="noopener">在 GitHub 查看主页 →</a>';
+  }
+
+  function place(el) {
+    var r = el.getBoundingClientRect();
+    card.style.visibility = 'hidden'; card.classList.add('show');
+    var ch = card.offsetHeight, cw = card.offsetWidth;
+    var top = r.bottom + 10;
+    if (top + ch > window.innerHeight - 8) top = r.top - ch - 10; // 上方翻转
+    var left = Math.min(Math.max(8, r.left + r.width / 2 - cw / 2), window.innerWidth - cw - 8);
+    card.style.top = Math.max(8, top) + 'px';
+    card.style.left = left + 'px';
+    card.style.visibility = '';
+  }
+
+  function render(el, login) {
+    activeEl = el;
+    var data = cache[login];
+    if (data) { card.innerHTML = body(data); place(el); return; }
+    card.innerHTML = skeleton(); place(el);
+    if (pending[login]) return;
+    pending[login] = true;
+    fetch('https://api.github.com/users/' + encodeURIComponent(login))
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (u) {
+        cache[login] = u;
+        if (activeEl === el) { card.innerHTML = body(u); place(el); }
+      })
+      .catch(function () {
+        if (activeEl === el) {
+          card.innerHTML = '<div class="uc-err">无法获取 @' + esc(login) + ' 的用户数据<br>(可能超出 API 限流或用户不存在)</div>';
+          place(el);
+        }
+      })
+      .finally(function () { delete pending[login]; });
+  }
+
+  function show(el) { clearTimeout(hideTimer); render(el, el.dataset.login); }
+  function scheduleHide() { hideTimer = setTimeout(function () { card.classList.remove('show'); card.setAttribute('aria-hidden', 'true'); activeEl = null; }, 180); }
+
+  document.querySelectorAll('.uc-trigger').forEach(function (el) {
+    el.addEventListener('mouseenter', function () { clearTimeout(showTimer); showTimer = setTimeout(function () { show(el); }, 200); });
+    el.addEventListener('mouseleave', function () { clearTimeout(showTimer); scheduleHide(); });
+  });
+  card.addEventListener('mouseenter', function () { clearTimeout(hideTimer); });
+  card.addEventListener('mouseleave', scheduleHide);
+  window.addEventListener('scroll', function () { if (activeEl) place(activeEl); }, { passive: true });
+})();
+</script>
+</body>
+</html>
