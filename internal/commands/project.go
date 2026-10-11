@@ -58,11 +58,16 @@ func runProject(env *Env, args string, codeBlocks []string) (Result, error) {
 		msg += fmt.Sprintf("\n✅ 本次操作：\n"+
 			"- 创建 Issue: %d\n"+
 			"- 更新 Issue: %d\n"+
-			"- 错误: %d\n",
-			res.Created, res.Updated, res.Errors)
+			"- 重开 Issue: %d\n"+
+			"- 发版本帖: %d",
+			res.Created, res.Updated, res.Reopened, res.Posted)
+		if res.Skipped > 0 {
+			msg += fmt.Sprintf("（跳过: %d）", res.Skipped)
+		}
+		msg += fmt.Sprintf("\n- 错误: %d\n", res.Errors)
 	} else {
 		msg += "\n⚠️ GitHub API 未配置，仅输出统计"
 	}
 
-	return reply(res.Created > 0 || res.Updated > 0, "%s", msg)
+	return reply(res.Created > 0 || res.Updated > 0 || res.Reopened > 0 || res.Posted > 0, "%s", msg)
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/acg-q/userscript-console/internal/cleanup"
 	"github.com/acg-q/userscript-console/internal/github"
 	"github.com/acg-q/userscript-console/internal/layout"
+	"github.com/acg-q/userscript-console/internal/projector"
 	"github.com/acg-q/userscript-console/internal/registry"
 )
 
@@ -329,3 +330,177 @@ var (
 	_ = github.Issue{}
 	_ = fmt.Errorf // 防止 unused import
 )
+
+// ── routeDoer 路由式 fake（任务 6：判等刷新 + 发帖集成） ────────
+
+// routeRule 路由规则：qContains 匹配查询文档子串，varNumber>0 时校验 variables.number。
+type routeRule struct {
+	qContains string
+	varNumber int
+	resp      string
+}
+
+// routeDoer 按查询内容路由响应（project 集成测试需要 REPO_QUERY 被 GetIssue/repoID 双用）。
+type routeDoer struct {
+	t     *testing.T
+	rules []routeRule
+}
+
+func (d *routeDoer) Do(req *http.Request) (*http.Response, error) {
+	b, _ := io.ReadAll(req.Body)
+	var m map[string]any
+	_ = json.Unmarshal(b, &m)
+	q, _ := m["query"].(string)
+	vars, _ := m["variables"].(map[string]any)
+	for _, r := range d.rules {
+		if !strings.Contains(q, r.qContains) {
+			continue
+		}
+		if r.varNumber > 0 {
+			n, _ := vars["number"].(float64)
+			if int(n) != r.varNumber {
+				continue
+			}
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(r.resp))}, nil
+	}
+	d.t.Errorf("routeDoer 未匹配: query=%q vars=%v", q, vars)
+	return nil, fmt.Errorf("routeDoer 未匹配")
+}
+
+// getIssueRule 匹配 REPO_QUERY issue 查询（按 variables.number 区分脚本）。
+func getIssueRule(n int, resp string) routeRule {
+	return routeRule{qContains: "issue(number: $number)", varNumber: n, resp: resp}
+}
+
+// issueCombinedResp 构造 REPO_QUERY combined 响应。
+func issueCombinedResp(t *testing.T, number int, title, body, state string) string {
+	t.Helper()
+	b, err := json.Marshal(map[string]any{"data": map[string]any{"repository": map[string]any{
+		"id": "R_1", "nameWithOwner": "o/r",
+		"issue": map[string]any{
+			"id": "I_x", "number": number, "title": title, "body": body, "state": state,
+			"createdAt": "2026-01-01T00:00:00Z", "updatedAt": "2026-01-01T00:00:00Z",
+			"author":   map[string]any{"login": "bot"},
+			"comments": map[string]any{"totalCount": 0},
+		},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// TestRunProjectRefreshReopenPublish self01 已关闭+内容过期 → Reopen+Update；
+// 发帖账本空 → 发帖并记账，Changed=true。
+func TestRunProjectRefreshReopenPublish(t *testing.T) {
+	env, _ := buildTestEnvWithSource(t)
+	env.RepoOwner = "o"
+	env.RepoName = "o/r"
+	env.PagesBase = "https://test.github.io/repo"
+
+	reg, _ := loadReg(env)
+	var rules []routeRule
+	rules = append(rules, getIssueRule(5, issueCombinedResp(t, 5, "[测试脚本] v0.0.1", "过期内容", "CLOSED")))
+	num := 6
+	for i := range reg.Scripts {
+		s := &reg.Scripts[i]
+		if s.Deleted {
+			continue
+		}
+		if s.ID == "self01" {
+			s.Issue = &registry.IssueRef{Number: 5, NodeID: "I_5", URL: "https://github.com/o/r/issues/5"}
+			s.Discussions = nil
+			continue
+		}
+		s.Issue = &registry.IssueRef{Number: num, NodeID: fmt.Sprintf("I_%d", num), URL: fmt.Sprintf("https://github.com/o/r/issues/%d", num)}
+		title := fmt.Sprintf("[%s] v%s", s.Name, s.Version)
+		rules = append(rules, getIssueRule(num, issueCombinedResp(t, num, title, projector.BuildIssueBody(s, env.PagesBase, env.layout().DistSeg()), "OPEN")))
+		s.Discussions = []registry.DiscussionEntry{{Version: s.Version, Number: 1, NodeID: "D_1"}}
+		num++
+	}
+	if _, err := saveReg(env, reg); err != nil {
+		t.Fatalf("saveReg: %v", err)
+	}
+
+	rules = append(rules,
+		routeRule{qContains: "reopenIssue(input:", resp: `{"data":{"reopenIssue":{"issue":{"id":"I_5","number":5,"state":"OPEN"}}}}`},
+		routeRule{qContains: "updateIssue(input:", resp: `{"data":{"updateIssue":{"issue":{"id":"I_5","number":5,"state":"OPEN"}}}}`},
+		routeRule{qContains: "discussionCategories", resp: `{"data":{"repository":{"discussionCategories":{"nodes":[{"id":"DC_1","name":"Q&A","slug":"q-a","isDefault":true}]}}}}`},
+		routeRule{qContains: "issue(number: $number)", varNumber: 1, resp: `{"data":{"repository":{"id":"R_1","nameWithOwner":"o/r","issue":null}}}`},
+		routeRule{qContains: "createDiscussion(input:", resp: `{"data":{"createDiscussion":{"discussion":{"id":"D_9","number":9,"title":"T","body":"B","url":"https://github.com/o/r/discussions/9","createdAt":"2026-10-10T00:00:00Z"}}}}`},
+	)
+	ghc, err := github.New("tok", "o/r", github.WithDoer(&routeDoer{t: t, rules: rules}), github.WithRetry(0))
+	if err != nil {
+		t.Fatalf("GHClient: %v", err)
+	}
+	env.GHClient = ghc
+
+	res, err := Execute("project", env, "", nil)
+	if err != nil {
+		t.Fatalf("project: %v", err)
+	}
+	if !res.Changed {
+		t.Error("有更新+重开+发帖时 Changed 应为 true")
+	}
+	for _, want := range []string{"更新 Issue: 1", "重开 Issue: 1", "发版本帖: 1", "错误: 0"} {
+		if !strings.Contains(res.Text, want) {
+			t.Errorf("回帖缺少 %q:\n%s", want, res.Text)
+		}
+	}
+	reg2, _ := loadReg(env)
+	for _, s := range reg2.Scripts {
+		if s.ID == "self01" {
+			if len(s.Discussions) != 1 || s.Discussions[0].Number != 9 {
+				t.Errorf("self01 发牌应追加 9 号帖: %+v", s.Discussions)
+			}
+		}
+	}
+}
+
+// TestRunProjectIdempotentNoChange 判等全相等+发牌均当前 → 零写、Changed=false、显示跳过数。
+func TestRunProjectIdempotentNoChange(t *testing.T) {
+	env, _ := buildTestEnvWithSource(t)
+	env.RepoOwner = "o"
+	env.RepoName = "o/r"
+	env.PagesBase = "https://test.github.io/repo"
+
+	reg, _ := loadReg(env)
+	var rules []routeRule
+	num := 5
+	for i := range reg.Scripts {
+		s := &reg.Scripts[i]
+		if s.Deleted {
+			continue
+		}
+		s.Issue = &registry.IssueRef{Number: num, NodeID: fmt.Sprintf("I_%d", num), URL: fmt.Sprintf("https://github.com/o/r/issues/%d", num)}
+		title := fmt.Sprintf("[%s] v%s", s.Name, s.Version)
+		body := projector.BuildIssueBody(s, env.PagesBase, env.layout().DistSeg())
+		rules = append(rules, getIssueRule(num, issueCombinedResp(t, num, title, body, "OPEN")))
+		s.Discussions = []registry.DiscussionEntry{{Version: s.Version, Number: 1, NodeID: "D_1"}}
+		num++
+	}
+	if _, err := saveReg(env, reg); err != nil {
+		t.Fatalf("saveReg: %v", err)
+	}
+
+	ghc, err := github.New("tok", "o/r", github.WithDoer(&routeDoer{t: t, rules: rules}), github.WithRetry(0))
+	if err != nil {
+		t.Fatalf("GHClient: %v", err)
+	}
+	env.GHClient = ghc
+
+	res, err := Execute("project", env, "", nil)
+	if err != nil {
+		t.Fatalf("project: %v", err)
+	}
+	if res.Changed {
+		t.Error("全相等+发牌均当前时 Changed 应为 false")
+	}
+	if !strings.Contains(res.Text, "更新 Issue: 0") || !strings.Contains(res.Text, "发版本帖: 0") {
+		t.Errorf("统计计数应全 0:\n%s", res.Text)
+	}
+	if !strings.Contains(res.Text, "跳过: ") {
+		t.Errorf("跳过数>0 时应展示发牌跳过数:\n%s", res.Text)
+	}
+}
