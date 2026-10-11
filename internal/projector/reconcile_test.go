@@ -2,6 +2,7 @@ package projector
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -198,5 +199,132 @@ func TestReconcileAPIErrorContinues(t *testing.T) {
 	}
 	if res.Active != 2 {
 		t.Errorf("Active = %d, want 2", res.Active)
+	}
+}
+
+// ── 判等刷新（任务 4） ────────────────────────────────────────
+
+// repoIssueResp 构造 REPO_QUERY（GetIssue combined）响应：repository.id + issue 全字段。
+func repoIssueResp(t *testing.T, number int, title, body, state string) string {
+	t.Helper()
+	b, err := json.Marshal(map[string]any{"data": map[string]any{"repository": map[string]any{
+		"id": "R_1", "nameWithOwner": "o/r",
+		"issue": map[string]any{
+			"id": "I_1", "number": number, "title": title, "body": body, "state": state,
+			"createdAt": "2026-01-01T00:00:00Z", "updatedAt": "2026-01-01T00:00:00Z",
+			"author":   map[string]any{"login": "bot"},
+			"comments": map[string]any{"totalCount": 0},
+		},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// refreshScript 构造已有关联 Issue 的测试脚本。
+func refreshScript() *registry.Script {
+	return &registry.Script{
+		ID: "r1", Name: "测试", Version: "1.2.0", Type: registry.TypeSelf, Enabled: true,
+		UpdatedAt: "2026-01-01T00:00:00Z",
+		Issue:     &registry.IssueRef{Number: 5, NodeID: "I_5", URL: "https://github.com/o/r/issues/5"},
+	}
+}
+
+// refreshEnv 返回已关联 Issue 脚本的环境（d 为 nil 时 GHClient 留空，由调用方赋值）。
+func refreshEnv(t *testing.T, d *multiRespDoer) (*Env, *registry.Script) {
+	t.Helper()
+	env := &Env{
+		Root: "/tmp", RepoOwner: "o", RepoName: "o/r",
+		PagesBase: "https://test.github.io/repo",
+	}
+	if d != nil {
+		env.GHClient = newTestGHClient(t, d)
+	}
+	return env, refreshScript()
+}
+
+// TestRefreshIssueEqualSkipsUpdate 标题/正文一致 → 只发 1 次 GetIssue，不写、不 bump UpdatedAt。
+func TestRefreshIssueEqualSkipsUpdate(t *testing.T) {
+	env, s := refreshEnv(t, nil)
+	title := "[测试] v1.2.0"
+	body := BuildIssueBody(s, env.PagesBase, env.distSeg())
+	d := &multiRespDoer{t: t, resps: []string{repoIssueResp(t, 5, title, body, "OPEN")}}
+	env.GHClient = newTestGHClient(t, d)
+
+	var res Result
+	if err := refreshIssue(context.Background(), env, s, &res); err != nil {
+		t.Fatalf("refreshIssue: %v", err)
+	}
+	if res.Updated != 0 || res.Reopened != 0 {
+		t.Errorf("Updated=%d Reopened=%d, want 0/0", res.Updated, res.Reopened)
+	}
+	if s.UpdatedAt != "2026-01-01T00:00:00Z" {
+		t.Errorf("相等刷新不应 bump UpdatedAt: %s", s.UpdatedAt)
+	}
+	if d.calls != 1 {
+		t.Errorf("calls = %d, want 1（仅 GetIssue）", d.calls)
+	}
+}
+
+// TestRefreshIssueTitleMismatchUpdates 标题不符 → UpdateIssue + Updated++。
+func TestRefreshIssueTitleMismatchUpdates(t *testing.T) {
+	env, s := refreshEnv(t, nil)
+	d := &multiRespDoer{t: t, resps: []string{
+		repoIssueResp(t, 5, "[测试] v0.9.0", BuildIssueBody(s, env.PagesBase, env.distSeg()), "OPEN"),
+		`{"data":{"updateIssue":{"issue":{"id":"I_5","number":5,"state":"OPEN"}}}}`,
+	}}
+	env.GHClient = newTestGHClient(t, d)
+
+	var res Result
+	if err := refreshIssue(context.Background(), env, s, &res); err != nil {
+		t.Fatalf("refreshIssue: %v", err)
+	}
+	if res.Updated != 1 || res.Reopened != 0 {
+		t.Errorf("Updated=%d Reopened=%d, want 1/0", res.Updated, res.Reopened)
+	}
+	if len(d.queries) != 2 || !strings.Contains(d.queries[1], "updateIssue(input:") {
+		t.Errorf("第 2 次应为 UpdateIssue: %v", d.queries)
+	}
+	if s.UpdatedAt == "2026-01-01T00:00:00Z" {
+		t.Errorf("有变更刷新应 bump UpdatedAt: %s", s.UpdatedAt)
+	}
+}
+
+// TestRefreshIssueClosedReopensFirst 远端已关闭 → Reopen 先于 Update + Reopened++。
+func TestRefreshIssueClosedReopensFirst(t *testing.T) {
+	env, s := refreshEnv(t, nil)
+	d := &multiRespDoer{t: t, resps: []string{
+		repoIssueResp(t, 5, "[测试] v0.9.0", "旧内容", "CLOSED"),
+		`{"data":{"reopenIssue":{"issue":{"id":"I_5","number":5,"state":"OPEN"}}}}`,
+		`{"data":{"updateIssue":{"issue":{"id":"I_5","number":5,"state":"OPEN"}}}}`,
+	}}
+	env.GHClient = newTestGHClient(t, d)
+
+	var res Result
+	if err := refreshIssue(context.Background(), env, s, &res); err != nil {
+		t.Fatalf("refreshIssue: %v", err)
+	}
+	if res.Reopened != 1 || res.Updated != 1 {
+		t.Errorf("Reopened=%d Updated=%d, want 1/1", res.Reopened, res.Updated)
+	}
+	if !strings.Contains(d.queries[1], "reopenIssue(input:") || !strings.Contains(d.queries[2], "updateIssue(input:") {
+		t.Errorf("顺序应为 Get→Reopen→Update: %v", d.queries)
+	}
+}
+
+// TestReconcileRefreshBranch 状态正确 Issue 的脚本走判等刷新；失败 → Errors++ 且不计 NoIssue。
+func TestReconcileRefreshBranch(t *testing.T) {
+	d := &multiRespDoer{t: t, resps: []string{
+		`{"errors":[{"message":"boom"}]}`, // GetIssue 失败
+	}}
+	env, _ := refreshEnv(t, d)
+	r := &registry.Registry{Schema: registry.SchemaVersion, Scripts: []registry.Script{*refreshScript()}}
+	res := reconcileIssues(context.Background(), env, r)
+	if res.Errors != 1 || res.Active != 1 {
+		t.Errorf("Errors=%d Active=%d, want 1/1", res.Errors, res.Active)
+	}
+	if res.NoIssue != 0 || res.Created != 0 {
+		t.Errorf("NoIssue=%d Created=%d, want 0/0（有 Issue 不应回填）", res.NoIssue, res.Created)
 	}
 }

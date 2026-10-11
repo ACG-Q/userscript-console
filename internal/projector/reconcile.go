@@ -53,10 +53,41 @@ func reconcileIssues(ctx context.Context, env *Env, r *registry.Registry) Result
 					continue
 				}
 			}
+		} else if env.GHClient != nil {
+			if err := refreshIssue(ctx, env, s, &res); err != nil {
+				res.Errors++
+				continue
+			}
 		}
 	}
 
 	return res
+}
+
+// refreshIssue 判等刷新已有 Issue（I-1 契约：title 与 body 全量比对，不写无变更）。
+// 远端已关闭且有变更时先 Reopen 再 Update；成功刷新才 bump UpdatedAt。
+func refreshIssue(ctx context.Context, env *Env, s *registry.Script, res *Result) error {
+	iss, err := env.GHClient.GetIssue(ctx, s.Issue.Number)
+	if err != nil {
+		return fmt.Errorf("读取 Issue #%d 失败: %w", s.Issue.Number, err)
+	}
+	title := fmt.Sprintf("[%s] v%s", s.Name, s.Version)
+	body := BuildIssueBody(s, env.PagesBase, env.distSeg())
+	if iss.Title == title && iss.Body == body {
+		return nil
+	}
+	if iss.State == "CLOSED" {
+		if err := env.GHClient.ReopenIssue(ctx, iss.NodeID); err != nil {
+			return fmt.Errorf("重开 Issue #%d 失败: %w", iss.Number, err)
+		}
+		res.Reopened++
+	}
+	if err := env.GHClient.UpdateIssue(ctx, iss.NodeID, title, body); err != nil {
+		return fmt.Errorf("更新 Issue #%d 失败: %w", iss.Number, err)
+	}
+	res.Updated++
+	s.UpdatedAt = nowRFC3339()
+	return nil
 }
 
 // backfillIssue 回填无 Issue 关联的脚本：全量列表按标题前缀匹配（含已关闭），
