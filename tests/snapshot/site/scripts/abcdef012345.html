@@ -217,23 +217,29 @@ main { padding: 8px 28px 36px; }
 
 .d-disc { margin-top: 20px; border-radius: 12px; padding: 16px; background: var(--bg-subtle); border: 1px solid var(--border); }
 .d-disc .disc-head { font-size: 14px; margin-bottom: 12px; }
-.cmt { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; padding: 10px 0; border-top: 1px solid var(--border); font-size: 14px; }
-.cmt:first-of-type { border-top: none; }
-.cmt b { font-size: 13.5px; }
-.cmt time { font-size: 12px; align-self: center; color: var(--text-muted); }
-.cmt p { grid-column: 1 / -1; margin: 2px 0 0; line-height: 1.6; overflow-wrap: anywhere; }
-.cmt.owner b::after { content: "· 仓库所有者"; color: var(--success); font-weight: 600; margin-left: 6px; font-size: 12px; }
-.cmt-who { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.cmt { display: grid; grid-template-columns: 32px 1fr; gap: 0 10px; padding: 12px 0; border-top: 1px solid var(--border); font-size: 14px; }
+.cmt:first-of-type { border-top: none; padding-top: 2px; }
+.cmt-av { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13.5px; font-weight: 700; color: #fff; user-select: none; }
+.cmt-av.av0 { background: #0969da; }
+.cmt-av.av1 { background: #1a7f37; }
+.cmt-av.av2 { background: #8250df; }
+.cmt-av.av3 { background: #bf3989; }
+.cmt-av.av4 { background: #bc4c00; }
+.cmt-main { min-width: 0; }
+.cmt-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 2px; }
+.cmt-head b { font-size: 13.5px; }
+.cmt time { font-size: 12px; color: var(--text-muted); }
+.cmt p { margin: 2px 0 0; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-line; }
+.cmt.owner .cmt-head b::after { content: "· 仓库所有者"; color: var(--success); font-weight: 600; margin-left: 6px; font-size: 12px; }
 .answer-tag { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--success-bg); color: var(--success); white-space: nowrap; }
-.cmt-replies { grid-column: 1 / -1; margin: 8px 0 0; padding: 2px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
-.cmt-replies .cmt { border-top: none; padding: 8px 0; font-size: 13px; }
+.cmt-replies { margin: 8px 0 0; padding-left: 12px; border-left: 2px solid var(--border); }
+.cmt-replies .cmt { grid-template-columns: 24px 1fr; padding: 8px 0; border-top: none; }
 .cmt-replies .cmt + .cmt { border-top: 1px solid var(--border); }
-.cmt-replies .cmt:first-child { padding-top: 6px; }
-.cmt-replies .cmt:last-child { padding-bottom: 6px; }
-.cmt-replies .cmt b { font-size: 12.5px; }
-.cmt-replies .cmt time { font-size: 11.5px; }
-.cmt-replies .cmt-replies { margin: 6px 0 0; padding: 0 0 0 10px; background: none; border: none; border-left: 2px solid var(--border); border-radius: 0; }
-.cmt p.quoted { padding: 2px 0 2px 10px; border-left: 3px solid var(--border-strong); color: var(--text-muted); }
+.cmt-replies .cmt:first-child { padding-top: 2px; }
+.cmt-replies .cmt-av { width: 24px; height: 24px; font-size: 11.5px; }
+.cmt-replies .cmt p { font-size: 13px; }
+.cmt-replies .cmt-replies { padding-left: 10px; }
+.cmt p.quoted { padding: 4px 10px; border-left: 3px solid var(--brand); background: var(--bg); border-radius: 0 6px 6px 0; color: var(--text-muted); }
 .d-disc .btn { margin-top: 12px; }
 
  
@@ -573,35 +579,51 @@ footer.foot a { font-weight: 600; }
     return '<span class="badge plain" data-tip="讨论尚未标记为已解决">' + n + ' 条回复 · 待解决</span>';
   }
 
+  function avatarEl(name) {
+    var s = document.createElement('span');
+    s.className = 'cmt-av';
+    var sum = 0;
+    for (var i = 0; i < name.length; i++) sum += name.charCodeAt(i);
+    s.classList.add('av' + (sum % 5));
+    s.textContent = name.trim().charAt(0) || '?';
+    s.setAttribute('aria-hidden', 'true');
+    return s;
+  }
+
   function commentEl(c) {
+    var name = c.author || '未知用户';
     var el = document.createElement('div');
     el.className = 'cmt' + (c.is_owner ? ' owner' : '');
-    var who = document.createElement('span');
-    who.className = 'cmt-who';
+    el.appendChild(avatarEl(name));
+    var main = document.createElement('div');
+    main.className = 'cmt-main';
+    var head = document.createElement('div');
+    head.className = 'cmt-head';
     var b = document.createElement('b');
-    b.textContent = c.author || '未知用户';
-    who.appendChild(b);
+    b.textContent = name;
+    head.appendChild(b);
     if (c.is_answer) {
       var tag = document.createElement('span');
       tag.className = 'answer-tag';
       tag.textContent = '✓ 已解决';
-      who.appendChild(tag);
+      head.appendChild(tag);
     }
-    el.appendChild(who);
     var t = document.createElement('time');
     t.textContent = c.time || '—';
-    el.appendChild(t);
+    head.appendChild(t);
+    main.appendChild(head);
     var p = document.createElement('p');
     p.textContent = c.body || '';
-    if ((c.body || '').trim().charAt(0) === '>') p.className = 'quoted';
-    el.appendChild(p);
+    if (c.quoted) p.className = 'quoted';
+    main.appendChild(p);
     var replies = c.replies || [];
     if (replies.length) {
       var wrap = document.createElement('div');
       wrap.className = 'cmt-replies';
       replies.forEach(function (r) { wrap.appendChild(commentEl(r)); });
-      el.appendChild(wrap);
+      main.appendChild(wrap);
     }
+    el.appendChild(main);
     return el;
   }
 
