@@ -73,6 +73,19 @@ func (b *siteBuilder) Build(reg *registry.Registry) (int, bool, []string, error)
 //   - 有版本帖账本但 0 线程抓到 → pages.Data{}（全灭视为降级）。
 //
 // 任何单帖抓取失败都降级为告警（站点仍要出），不中断构建。
+func mapComments(cs []github.Comment) []pages.Comment {
+	out := make([]pages.Comment, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, pages.Comment{
+			Author:    c.Author,
+			Body:      c.Body,
+			CreatedAt: c.CreatedAt,
+			Replies:   mapComments(c.Replies),
+		})
+	}
+	return out
+}
+
 func (b *siteBuilder) fetchData(reg *registry.Registry) (pages.Data, []string) {
 	if b.gh == nil {
 		return pages.Data{}, nil
@@ -94,16 +107,8 @@ func (b *siteBuilder) fetchData(reg *registry.Registry) (pages.Data, []string) {
 				warnings = append(warnings, fmt.Sprintf("抓取版本帖 %s 的评论失败: %v", d.NodeID, err))
 				continue
 			}
-			comments := make([]pages.Comment, 0, len(th.Comments))
-			for _, c := range th.Comments {
-				comments = append(comments, pages.Comment{
-					Author:    c.Author,
-					Body:      c.Body,
-					CreatedAt: c.CreatedAt,
-				})
-			}
 			data.Discussions[d.NodeID] = pages.Thread{
-				Comments:  comments,
+				Comments:  mapComments(th.Comments),
 				HasAnswer: th.HasAnswer,
 			}
 			fetched++

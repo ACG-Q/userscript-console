@@ -58,7 +58,10 @@ func TestSiteFetchDataWithGH(t *testing.T) {
 	b := &siteBuilder{gh: &fakeGH{
 		threads: map[string]github.Thread{
 			"DSC_OK": {
-				Comments:  []github.Comment{{Author: "alice", Body: "发布说明", CreatedAt: "2026-01-01T00:00:00Z"}},
+				Comments: []github.Comment{{
+					Author: "alice", Body: "发布说明", CreatedAt: "2026-01-01T00:00:00Z",
+					Replies: []github.Comment{{Author: "bob", Body: "收到", CreatedAt: "2026-01-02T00:00:00Z"}},
+				}},
 				HasAnswer: true,
 			},
 		},
@@ -70,6 +73,9 @@ func TestSiteFetchDataWithGH(t *testing.T) {
 	th := data.Discussions["DSC_OK"]
 	if len(th.Comments) != 1 || th.Comments[0].Author != "alice" {
 		t.Errorf("版本帖评论应落进 Data, got %+v", th)
+	}
+	if len(th.Comments[0].Replies) != 1 || th.Comments[0].Replies[0].Author != "bob" {
+		t.Errorf("回复应递归进 Data, got %+v", th.Comments[0])
 	}
 	if !th.HasAnswer {
 		t.Error("HasAnswer 应透传进 Data")
